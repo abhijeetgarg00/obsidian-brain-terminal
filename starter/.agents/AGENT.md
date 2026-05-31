@@ -1,7 +1,7 @@
 ---
 agent: brain-terminal-router
 version: 1.0
-first_run: true
+first_run: false
 last_scanned: "2026-05-31 (seeded)"
 vault_files: 83
 vault_folders: 17
@@ -9,7 +9,7 @@ profiles_updated:
   - note-manager
   - brainstormer
 update_log:
-  - "2026-05-31 — Manually seeded with real vault structure. Run first-run scan to refine further."
+  - "2026-05-31 — Manually seeded with real vault structure. Profiles enriched."
 ---
 
 # Brain Terminal — Agent Router
@@ -29,7 +29,7 @@ Read your own frontmatter above.
 
 ## First Run Sequence
 
-Run this ONCE. It enriches all thin profiles with real vault knowledge.
+Run this ONCE. It enriches profiles with real vault knowledge.
 
 ### Step 1 — Scan the vault
 Walk every folder and file in the vault. Build a map:
@@ -50,15 +50,11 @@ Include: folder tree, purpose of each folder, conventions found, example note pa
 Update `.brain/note-format.md` with the actual frontmatter fields, naming patterns,
 and wikilink conventions found in this vault.
 
-### Step 4 — Enrich each thin profile
-For each profile in `.brain/profiles/`, replace the `[PENDING]` sections with real data:
+### Step 4 — Enrich both profiles
+For each profile in `.brain/profiles/`, update with real vault data:
 
 **note-manager.md** — add: actual folder names, template paths, frontmatter fields used
-**project-manager.md** — add: actual project folder structure, how projects are named
-**git-manager.md** — add: any repo paths found, commit message patterns observed
 **brainstormer.md** — add: where ideas/brainstorms live, how mind maps are structured
-**researcher.md** — add: where research notes live, citation format used
-**mermaid-writer.md** — add: where diagrams live, note format for inserting diagrams
 
 ### Step 5 — Update yourself
 Edit this file (AGENT.md). Update the frontmatter:
@@ -66,15 +62,15 @@ Edit this file (AGENT.md). Update the frontmatter:
 - Set `last_scanned: <today's date>`
 - Set `vault_files: <count>`
 - Set `vault_folders: <count>`
-- Set `profiles_updated: [note-manager, project-manager, git-manager, brainstormer, researcher, mermaid-writer]`
-- Append to `update_log: ["<date> — First run. Scanned X files, Y folders. Updated 6 profiles."]`
+- Set `profiles_updated: [note-manager, brainstormer]`
+- Append to `update_log`: `"<date> — First run. Scanned X files, Y folders. Updated 2 profiles."`
 
 ### Step 6 — Report to user
 Write a short summary in the terminal:
 ```
 ✓ Brain Terminal first-run complete
 ✓ Vault scanned: X files, Y folders
-✓ 6 profiles enriched with your vault structure
+✓ 2 profiles enriched with your vault structure
 ✓ Ready — ask me anything
 ```
 
