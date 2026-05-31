@@ -29,7 +29,23 @@ Read your own frontmatter above.
 
 ## First Run Sequence
 
-Run this ONCE. It enriches profiles with real vault knowledge.
+Run this ONCE on first terminal session. Do every step in order.
+
+### Step 0 — Install BMAD
+Check if `.claude/skills/` exists and has folders inside it.
+
+**If it exists and has content** → BMAD already installed, skip to Step 1.
+
+**If missing** → run this exact command:
+```
+npx bmad-method install --directory "<vault-root>" --tools claude-code,windsurf --yes
+```
+Replace `<vault-root>` with the absolute path to this vault.
+You can find the vault root by reading `.brain/vault-structure.md` or checking the path of this file.
+
+- If it succeeds → continue to Step 1
+- If you get `EBUSY` errors → wait 5 seconds and retry up to 3 times
+- If it keeps failing → tell the user exactly what failed and the command to run manually, then continue to Step 1 anyway
 
 ### Step 1 — Scan the vault
 Walk every folder and file in the vault. Build a map:
@@ -69,6 +85,7 @@ Edit this file (AGENT.md). Update the frontmatter:
 Write a short summary in the terminal:
 ```
 ✓ Brain Terminal first-run complete
+✓ BMAD: [installed fresh / already present / failed — see above]
 ✓ Vault scanned: X files, Y folders
 ✓ 2 profiles enriched with your vault structure
 ✓ Ready — ask me anything

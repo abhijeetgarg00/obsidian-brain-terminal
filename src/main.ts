@@ -70,10 +70,11 @@ export default class BrainTerminalPlugin extends Plugin {
 
     this.app.workspace.onLayoutReady(async () => {
       const ready = await this.checkPrerequisites();
-      if (!ready) return; // prerequisites notice shown — stop here
+      if (!ready) return;
       await this.maybeScaffoldStarterPack();
       await this.maybeInstallCompanionPlugins();
-      await this.maybeInstallBmad();
+      // BMAD install is handled by the AI agent on first terminal session
+      // The agent reads AGENT.md → Step 0 → runs npx bmad-method install
     });
     btLog("loaded");
   }
@@ -866,53 +867,7 @@ This vault is powered by **Brain Terminal** — an AI terminal inside Obsidian.
     );
   }
 
-  // ─── BMAD install ────────────────────────────────────────────────────────────
-
-  private async maybeInstallBmad(): Promise<void> {
-    const data = (await this.loadData()) ?? {};
-    if (data.bmadInstalled) return;
-
-    // Check if already installed — .claude/skills or .agents/skills exists with content
-    const alreadyInstalled =
-      await this.isBmadPresent(".claude/skills") ||
-      await this.isBmadPresent(".agents/skills");
-
-    if (alreadyInstalled) {
-      btLog("BMAD already present — skipping install");
-      await this.saveData({ ...data, bmadInstalled: true });
-      return;
-    }
-
-    btLog("BMAD not found — running npx bmad-method install");
-    new (require("obsidian").Notice)(
-      "Brain Terminal: installing BMAD agent suite (this takes ~30s)…",
-      6000
-    );
-
-    try {
-      await this.runBmadInstall();
-      await this.saveData({ ...data, bmadInstalled: true });
-      new (require("obsidian").Notice)(
-        "Brain Terminal: BMAD installed — 69 AI agents ready in your vault!",
-        8000
-      );
-      btLog("BMAD install complete");
-    } catch (e) {
-      btLog("BMAD install failed:", e);
-      new (require("obsidian").Notice)(
-        `Brain Terminal: BMAD install failed — open Brain Terminal and run:\nnpx bmad-method install --directory "${this.vaultRoot}" --tools claude-code,windsurf --yes`,
-        12000
-      );
-    }
-  }
-
-  /** Returns true if the BMAD skills folder exists and has at least one subfolder */
-  private async isBmadPresent(skillsPath: string): Promise<boolean> {
-    const norm = normalizePath(skillsPath);
-    if (!await this.app.vault.adapter.exists(norm)) return false;
-    const listed = await this.app.vault.adapter.list(norm);
-    return (listed.folders ?? []).length > 0;
-  }
+  // ─── BMAD install (manual, from settings page) ───────────────────────────────
 
   /** Spawn `npx bmad-method install` as a child process */
   private runBmadInstall(): Promise<void> {
