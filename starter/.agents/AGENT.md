@@ -29,8 +29,7 @@ Read your own frontmatter above.
 
 ## First Run Sequence
 
-Run this ONCE on first terminal session. Work through every step in order.
-This is a deep scan — vault AND all linked code repositories.
+Run this ONCE on the first terminal session. Work through every step in order.
 
 ---
 
@@ -44,151 +43,92 @@ Check if `.claude/skills/` exists and has folders inside it.
 ```
 npx bmad-method install --directory "<vault-root>" --modules bmm,bmb,tea,cis --tools claude-code,windsurf --yes
 ```
-Replace `<vault-root>` with the absolute path to this vault (the folder containing this file).
+Replace `<vault-root>` with the absolute path to this vault.
 
-Modules:
-- `core` — base agents: PM, Architect, Dev, Analyst, UX, QA, Tech Writer (always included)
-- `bmm` — planning, PRDs, epics, stories, sprints
-- `bmb` — build custom agents and workflows
-- `tea` — test plans, Playwright, coverage, CI
-- `cis` — creative intelligence suite: innovation, brainstorming, design thinking
+Modules: `core` (always), `bmm` (planning), `bmb` (custom agents), `tea` (testing), `cis` (creative)
+Excluded: `bmgd` (game dev — not needed)
 
-Intentionally excluded:
-- `bmgd` — Game Dev Studio (Unity, Unreal, Godot) — not needed
-
-If you get `EBUSY` errors → wait 5s → retry up to 3 times.
-If it keeps failing → tell the user the exact command to run manually, then continue.
+If `EBUSY` errors → wait 5s → retry up to 3 times.
+If still failing → tell user the exact command to run manually, then continue.
 
 ---
 
-### Step 1 — Scan the vault
+### Step 1 — Scan every note in the vault
 
-Walk every folder and file in the vault. For each item record:
-- Full path
-- File type (note, template, config, asset)
-- Tags and frontmatter fields if it's a markdown note
-- Any `[[wikilinks]]` or external links inside
+Walk every `.md` file in the vault (skip `.obsidian/`, `.claude/`, `.agents/`, `_bmad/`).
 
-Build a complete picture of:
-- Every folder and its purpose
-- File naming conventions used (kebab-case, Title Case, snake_case)
-- How projects are structured (one folder per project, what's inside each)
-- Where templates live and what types exist
-- Any README, index, or home notes
-- Which notes link to which
+For each note read:
+- Frontmatter fields present (tags, status, created, topic, etc.)
+- Which folder it lives in
+- Any `[[wikilinks]]` to other notes
+- File naming style (Title Case, kebab-case, etc.)
 
----
-
-### Step 2 — Find all code repositories
-
-Search for git repos linked to this vault. Look for:
-- Any `.git` folders **inside** the vault
-- Any paths mentioned in project notes (look for `D:\`, `C:\`, `/Users/`, `/home/`, repo URLs)
-- Check `.brain/vault-structure.md` → `## Known Git Repos` table
-- Check project notes in `project/*/` for repo paths
-
-For each repo found:
-1. Record: project name, repo path, primary language, framework
-2. Run `git log --oneline -10` → capture recent commit history
-3. Run `git status` → note any uncommitted changes
-4. Read `package.json` / `README.md` / `pyproject.toml` / `Cargo.toml` → understand the stack
-5. List top-level folders → understand project structure
-6. Read the main entry file (e.g. `src/main.ts`, `src/index.ts`, `main.py`) → understand what it does
+Build up a picture of:
+- What folders exist and what kind of notes live in each
+- What frontmatter fields are actually used (not just what templates say)
+- How notes link to each other
+- What templates exist in `_templates/` and what they cover
+- Any patterns or conventions the user has established
 
 ---
 
-### Step 3 — Deep scan each repo
+### Step 2 — Update vault-structure.md
 
-For each repo found in Step 2, do a thorough read:
-
-**Structure scan:**
-- List all source files by folder
-- Identify: entry points, config files, test files, build scripts
-- Note: what the project does, what tech stack it uses, what problems it solves
-
-**Code understanding:**
-- Read key files: main entry, core modules, config
-- Understand the architecture: how files relate to each other
-- Note: any TODOs, known issues, incomplete features
-
-**Dependency scan:**
-- Read `package.json` / `requirements.txt` / `Cargo.toml`
-- Note key dependencies and versions
-
-**Git history:**
-- Last 10 commits — what has been worked on recently
-- Any open branches
-- Uncommitted changes
-
-Write a `## Repo: <name>` section to `.brain/vault-structure.md` for each repo containing:
-- Absolute path
-- Stack and framework
-- What it does (2-3 sentences)
-- Key files to know
-- Recent activity summary
-- Current status (active / stalled / complete)
+Rewrite `.brain/vault-structure.md` with what you actually found:
+- Real folder tree with one-line purpose for each folder
+- Actual naming conventions observed
+- Template inventory (list every template and what it's for)
+- Note linking patterns (e.g. projects link to skills, ideas link to projects)
+- Any folders that were empty or had no clear purpose
 
 ---
 
-### Step 4 — Update vault-structure.md
+### Step 3 — Update note-format.md
 
-Rewrite `.brain/vault-structure.md` completely with real data:
-- Full vault folder tree with purposes
-- Complete repo map with all details from Step 3
-- Naming conventions found
-- Note linking patterns
-
----
-
-### Step 5 — Update note-format.md
-
-Update `.brain/note-format.md` with actual frontmatter fields, naming patterns,
-and wikilink conventions found across the vault.
+Update `.brain/note-format.md` with the real frontmatter fields found:
+- Which fields appear in which note types
+- Required vs optional fields per type
+- Any custom fields the user has added beyond the defaults
 
 ---
 
-### Step 6 — Enrich both profiles with everything you learned
+### Step 4 — Enrich both profiles
 
-**note-manager.md** — update with:
-- Actual folder names and purposes
-- All template paths and when to use each
-- Real frontmatter fields in use
-- Actual repo paths for the git section
-- Commit message patterns observed in git history
+**note-manager.md** — replace the Vault Structure and Templates sections with real data:
+- Actual folder names and what goes in each
+- Every template with its real path and the frontmatter fields it uses
+- Real naming conventions (not generic placeholders)
 
-**brainstormer.md** — update with:
-- Where ideas and brainstorms actually live
-- Connected project notes to reference during ideation
-- Any mind maps or diagrams already in the vault
+**brainstormer.md** — replace the Vault Structure section with real data:
+- Where ideas actually live (`ideas/`, subfolders found, naming style)
+- Which project notes exist that brainstorms might connect to
+- Any existing mind maps or diagrams found in the vault
 
 ---
 
-### Step 7 — Update yourself
+### Step 5 — Update yourself
 
-Edit this file (AGENT.md). Update the frontmatter:
+Edit this file. Update the frontmatter:
 - Set `first_run: false`
 - Set `last_scanned: <today's date>`
-- Set `vault_files: <count>`
-- Set `vault_folders: <count>`
+- Set `vault_files: <count of .md files scanned>`
+- Set `vault_folders: <count of folders>`
 - Set `profiles_updated: [note-manager, brainstormer]`
-- Append to `update_log`: `"<date> — First run complete. Scanned X vault files, Y repos. Updated 2 profiles."`
+- Append to `update_log`: `"<date> — First run. Scanned X notes across Y folders. Updated 2 profiles."`
 
 ---
 
-### Step 8 — Report to user
+### Step 6 — Report to user
 
-Print a full summary:
 ```
-✓ Brain Terminal — First Run Complete
-─────────────────────────────────────
-BMAD:      [installed fresh / already present / failed]
-Vault:     X files across Y folders
-Repos:     N repos found and scanned
-  - <repo name>: <stack> — <1 line description>
-  - <repo name>: <stack> — <1 line description>
-Profiles:  note-manager + brainstormer enriched
-─────────────────────────────────────
-Ready. Ask me anything about your vault or code.
+✓ Brain Terminal — Ready
+────────────────────────────────────────
+BMAD:     [installed / already present / failed]
+Scanned:  X notes across Y folders
+Profiles: note-manager + brainstormer enriched
+────────────────────────────────────────
+Your vault structure is now loaded into my profiles.
+Just talk to me — I know where everything lives.
 ```
 
 ---
