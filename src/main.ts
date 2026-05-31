@@ -575,7 +575,7 @@ export default class BrainTerminalPlugin extends Plugin {
 
     const check = (cmd: string, args: string[]): Promise<string | null> =>
       new Promise(resolve => {
-        execFile(cmd, args, { timeout: 5000 }, (err: any, stdout: string) => {
+        execFile(cmd, args, { timeout: 5000, shell: true }, (err: any, stdout: string) => {
           resolve(err ? null : stdout.trim());
         });
       });
@@ -694,25 +694,30 @@ export default class BrainTerminalPlugin extends Plugin {
         // Some structure exists — create missing folders + missing templates only
         btLog("partial vault — creating missing folders and templates");
         await this.scaffoldVaultStructure();   // creates missing folders
+        await this.ensureStarterPackDirs(STARTER_PACK);
         await this.copyBridgeFiles(STARTER_PACK); // bridge files
         // Copy only templates that don't exist yet
         for (const { path: p, content } of STARTER_PACK) {
           if (!normalizePath(p).includes("_templates")) continue;
           const norm = normalizePath(p);
           if (!await this.app.vault.adapter.exists(norm))
-            await this.app.vault.create(norm, content);
+            await this.app.vault.adapter.write(norm, content);
         }
 
       } else {
         // Empty vault — scaffold everything from scratch
         btLog("empty vault — scaffolding full structure");
-        await this.scaffoldVaultStructure();   // folders + Home.md
+        await this.scaffoldVaultStructure();   // user folders + Home.md
+        // Ensure all parent dirs for starter pack files exist
+        await this.ensureStarterPackDirs(STARTER_PACK);
         for (const { path: p, content } of STARTER_PACK) {
           const norm = normalizePath(p);
-          if (!await this.app.vault.adapter.exists(norm))
-            await this.app.vault.create(norm, content);
+          if (!await this.app.vault.adapter.exists(norm)) {
+            await this.app.vault.adapter.write(norm, content);
+            btLog("wrote:", norm);
+          }
         }
-        new (require("obsidian").Notice)("Brain Terminal: vault structure created! Check Home.md to get started.");
+        new (require("obsidian").Notice)("Brain Terminal: vault set up! Open the terminal to get started.", 6000);
       }
 
       await this.saveData({ ...data, starterPackVersion: STARTER_PACK_VERSION });
@@ -757,8 +762,6 @@ export default class BrainTerminalPlugin extends Plugin {
 
   /** Create the full recommended folder + README structure for a blank/partial vault */
   private async scaffoldVaultStructure(): Promise<void> {
-    const fs = require("fs");
-    const path = require("path");
     const folders = [
       "project",
       "skills",
@@ -771,12 +774,11 @@ export default class BrainTerminalPlugin extends Plugin {
       "AI Profiles",
     ];
 
-    // Create folders (Obsidian needs at least one file in each)
+    // Create folders using adapter.mkdir — works even if parent doesn't exist
     for (const folder of folders) {
       const norm = normalizePath(folder);
       if (!await this.app.vault.adapter.exists(norm)) {
-        // Create a .gitkeep so the folder exists
-        await this.app.vault.create(normalizePath(`${folder}/.gitkeep`), "");
+        await this.app.vault.adapter.mkdir(norm);
         btLog("created folder:", folder);
       }
     }
@@ -828,6 +830,23 @@ This vault is powered by **Brain Terminal** — an AI terminal inside Obsidian.
     }
   }
 
+  /** Ensure every parent directory for starter pack files exists */
+  private async ensureStarterPackDirs(pack: any[]): Promise<void> {
+    const dirs = new Set<string>();
+    for (const { path: p } of pack) {
+      const parts = normalizePath(p).split("/");
+      for (let i = 1; i < parts.length; i++) {
+        dirs.add(parts.slice(0, i).join("/"));
+      }
+    }
+    for (const dir of dirs) {
+      if (!await this.app.vault.adapter.exists(dir)) {
+        await this.app.vault.adapter.mkdir(dir);
+        btLog("mkdir:", dir);
+      }
+    }
+  }
+
   /** Copy only bridge files (CLAUDE.md, .brain/, .agents/AGENT.md) — skip templates */
   private async copyBridgeFiles(pack: any[]): Promise<void> {
     const bridgePaths = [
@@ -837,17 +856,16 @@ This vault is powered by **Brain Terminal** — an AI terminal inside Obsidian.
       ".brain/note-format.md",
       ".brain/profiles/note-manager.md",
       ".brain/profiles/brainstormer.md",
-      ".brain/profiles/researcher.md",
-      ".brain/profiles/project-manager.md",
-      ".brain/profiles/git-manager.md",
-      ".brain/profiles/mermaid-writer.md",
       ".agents/AGENT.md",
     ];
+    await this.ensureStarterPackDirs(pack);
     for (const { path: p, content } of pack) {
       const norm = normalizePath(p);
       if (bridgePaths.some(b => norm.endsWith(normalizePath(b)))) {
-        if (!await this.app.vault.adapter.exists(norm))
-          await this.app.vault.create(norm, content);
+        if (!await this.app.vault.adapter.exists(norm)) {
+          await this.app.vault.adapter.write(norm, content);
+          btLog("wrote bridge:", norm);
+        }
       }
     }
   }
@@ -949,11 +967,6 @@ This vault is powered by **Brain Terminal** — an AI terminal inside Obsidian.
 
     for (const plugin of missing) {
       try {
-        // Download manifest from GitHub releases
-        const manifestUrl = `https://github.com/${plugin.repo}/releases/latest/download/manifest.json`;
-        const mainUrl     = `https://github.com/${plugin.repo}/releases/latest/download/main.js`;
-        const stylesUrl   = `https://github.com/${plugin.repo}/releases/latest/download/styles.css`;
-
         const pluginDir = normalizePath(`.obsidian/plugins/${plugin.id}`);
         const adapter   = this.app.vault.adapter;
 
@@ -961,23 +974,34 @@ This vault is powered by **Brain Terminal** — an AI terminal inside Obsidian.
           await adapter.mkdir(pluginDir);
         }
 
-        // Fetch and write manifest.json
-        const manifestRes = await fetch(manifestUrl);
-        if (!manifestRes.ok) throw new Error(`manifest fetch failed: ${manifestRes.status}`);
-        await adapter.write(normalizePath(`${pluginDir}/manifest.json`), await manifestRes.text());
+        // Use Node https — fetch() is blocked by CORS from app://obsidian.md
+        const get = (url: string): Promise<string> => new Promise((resolve, reject) => {
+          const https = require("https");
+          const follow = (u: string) => {
+            https.get(u, { headers: { "User-Agent": "obsidian-brain-terminal" } }, (res: any) => {
+              if (res.statusCode === 301 || res.statusCode === 302) return follow(res.headers.location);
+              if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`));
+              const chunks: Buffer[] = [];
+              res.on("data", (d: Buffer) => chunks.push(d));
+              res.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+              res.on("error", reject);
+            }).on("error", reject);
+          };
+          follow(url);
+        });
 
-        // Fetch and write main.js
-        const mainRes = await fetch(mainUrl);
-        if (!mainRes.ok) throw new Error(`main.js fetch failed: ${mainRes.status}`);
-        await adapter.write(normalizePath(`${pluginDir}/main.js`), await mainRes.text());
+        const base = `https://github.com/${plugin.repo}/releases/latest/download`;
+        const manifest = await get(`${base}/manifest.json`);
+        await adapter.write(normalizePath(`${pluginDir}/manifest.json`), manifest);
 
-        // Fetch styles.css if it exists (optional)
+        const main = await get(`${base}/main.js`);
+        await adapter.write(normalizePath(`${pluginDir}/main.js`), main);
+
         try {
-          const stylesRes = await fetch(stylesUrl);
-          if (stylesRes.ok) await adapter.write(normalizePath(`${pluginDir}/styles.css`), await stylesRes.text());
-        } catch { /* no styles — fine */ }
+          const styles = await get(`${base}/styles.css`);
+          await adapter.write(normalizePath(`${pluginDir}/styles.css`), styles);
+        } catch { /* styles optional */ }
 
-        // Enable the plugin
         await plugins.loadPlugin(plugin.id);
         await plugins.enablePlugin(plugin.id);
 
