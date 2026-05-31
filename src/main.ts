@@ -68,7 +68,10 @@ export default class BrainTerminalPlugin extends Plugin {
 
     this.openNoteWatcher = setInterval(() => this.checkOpenNote(), 250);
 
-    this.app.workspace.onLayoutReady(() => this.maybeScaffoldStarterPack());
+    this.app.workspace.onLayoutReady(async () => {
+      await this.maybeScaffoldStarterPack();
+      await this.maybeInstallCompanionPlugins();
+    });
     btLog("loaded");
   }
 
@@ -672,5 +675,89 @@ This vault is powered by **Brain Terminal** — an AI terminal inside Obsidian.
     }
 
     new (require("obsidian").Notice)(`Brain Terminal updated to v${newVersion} — new agent profiles available`);
+  }
+
+  // ─── Companion plugins ───────────────────────────────────────────────────────
+
+  private readonly COMPANION_PLUGINS = [
+    {
+      id:   "templater-obsidian",
+      name: "Templater",
+      repo: "SilentVoid13/Templater",
+    },
+    {
+      id:   "update-time-on-edit",
+      name: "Update time on edit",
+      repo: "beaussan/update-time-on-edit",
+    },
+    {
+      id:   "nldates-obsidian",
+      name: "Natural Language Dates",
+      repo: "argenos/nldates-obsidian",
+    },
+  ];
+
+  private async maybeInstallCompanionPlugins(): Promise<void> {
+    const data = (await this.loadData()) ?? {};
+    if (data.companionPluginsInstalled) return;
+
+    const plugins = (this.app as any).plugins;
+    if (!plugins) return;
+
+    const missing = this.COMPANION_PLUGINS.filter(p => !plugins.manifests[p.id]);
+    if (!missing.length) {
+      await this.saveData({ ...data, companionPluginsInstalled: true });
+      return;
+    }
+
+    btLog("installing companion plugins:", missing.map(p => p.id).join(", "));
+
+    for (const plugin of missing) {
+      try {
+        // Download manifest from GitHub releases
+        const manifestUrl = `https://github.com/${plugin.repo}/releases/latest/download/manifest.json`;
+        const mainUrl     = `https://github.com/${plugin.repo}/releases/latest/download/main.js`;
+        const stylesUrl   = `https://github.com/${plugin.repo}/releases/latest/download/styles.css`;
+
+        const pluginDir = normalizePath(`.obsidian/plugins/${plugin.id}`);
+        const adapter   = this.app.vault.adapter;
+
+        if (!await adapter.exists(pluginDir)) {
+          await adapter.mkdir(pluginDir);
+        }
+
+        // Fetch and write manifest.json
+        const manifestRes = await fetch(manifestUrl);
+        if (!manifestRes.ok) throw new Error(`manifest fetch failed: ${manifestRes.status}`);
+        await adapter.write(normalizePath(`${pluginDir}/manifest.json`), await manifestRes.text());
+
+        // Fetch and write main.js
+        const mainRes = await fetch(mainUrl);
+        if (!mainRes.ok) throw new Error(`main.js fetch failed: ${mainRes.status}`);
+        await adapter.write(normalizePath(`${pluginDir}/main.js`), await mainRes.text());
+
+        // Fetch styles.css if it exists (optional)
+        try {
+          const stylesRes = await fetch(stylesUrl);
+          if (stylesRes.ok) await adapter.write(normalizePath(`${pluginDir}/styles.css`), await stylesRes.text());
+        } catch { /* no styles — fine */ }
+
+        // Enable the plugin
+        await plugins.loadPlugin(plugin.id);
+        await plugins.enablePlugin(plugin.id);
+
+        btLog("installed companion plugin:", plugin.id);
+      } catch (e) {
+        btLog("failed to install", plugin.id, e);
+      }
+    }
+
+    await this.saveData({ ...data, companionPluginsInstalled: true });
+
+    const installedNames = missing.map(p => p.name).join(", ");
+    new (require("obsidian").Notice)(
+      `Brain Terminal: installed companion plugins — ${installedNames}`,
+      8000
+    );
   }
 }
