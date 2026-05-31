@@ -18,7 +18,7 @@ export const DEFAULT_SETTINGS: BrainTerminalSettings = {
   shellPath: "",
   shellArgs: [],
   startupCommand: "",
-  preferredCli: "none",
+  preferredCli: "claude",
   fontFamily: "Cascadia Code, Consolas, Courier New, monospace",
   fontSize: 14,
   scrollback: 5000,
