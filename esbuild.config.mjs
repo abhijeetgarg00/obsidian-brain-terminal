@@ -27,7 +27,9 @@ const ctx = await esbuild.context({
   bundle: true,
   format: "cjs",
   target: "es2022",
-  outfile: "main.js",
+  outfile: prod
+    ? "main.js"
+    : "D:/mindmap/MindMap/.obsidian/plugins/obsidian-brain-terminal/main.js",
   external,
   logLevel: "info",
   sourcemap: prod ? false : "inline",
