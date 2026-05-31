@@ -12,83 +12,123 @@ const MODIFY_DEBOUNCE_MS = 600;
 export default class BrainTerminalPlugin extends Plugin {
   settings!: BrainTerminalSettings;
 
+  private vaultRoot = "";
   private contextFile = "";
   private openNoteFile = "";
+
+  // Diff system
   private fileContentCache: Map<string, string[]> = new Map();
-  private diffFadeTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  private diffFadeTimers: Map<string, { baseline: string[]; timer: ReturnType<typeof setTimeout> }> = new Map();
   private modifyDebounceTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private pendingDiffBaselines: Map<string, string[]> = new Map();
+  private shownScrollLines: Map<string, Set<number>> = new Map();
+
   private openNoteWatcher: ReturnType<typeof setInterval> | null = null;
+  private _lastOpenNote = "";
   private isUnloaded = false;
+  private _snapshotDone = false;
+
+  // ─── Load ───────────────────────────────────────────────────────────────────
 
   async onload(): Promise<void> {
     await this.loadSettings();
 
-    const dir = (this.app.vault.adapter as any).basePath
-      ? require("path").join((this.app.vault.adapter as any).basePath, ".obsidian", "plugins", this.manifest.id)
+    this.vaultRoot = (this.app.vault.adapter as any).basePath ?? "";
+    const dir = this.vaultRoot
+      ? require("path").join(this.vaultRoot, ".obsidian", "plugins", this.manifest.id)
       : this.manifest.dir ?? "";
     this.contextFile  = require("path").join(dir, ".context");
     this.openNoteFile = require("path").join(dir, ".open-note");
 
-    this.registerView(VIEW_TYPE_TERMINAL, leaf => new TerminalView(leaf, this.settings, dir));
+    this.registerView(VIEW_TYPE_TERMINAL, leaf => new TerminalView(leaf, this.settings, dir, () => this.onFirstTerminal()));
 
-    this.addRibbonIcon("terminal", "Brain: New Terminal", () => this.createNewTerminal());
+    this.addRibbonIcon("brain", "Brain Terminal", () => this.createNewTerminal());
     this.addCommand({ id: "toggle-terminal", name: "Brain: Toggle Terminal", callback: () => this.toggleTerminal() });
     this.addCommand({ id: "new-terminal",    name: "Brain: New Terminal",    callback: () => this.createNewTerminal() });
 
     this.addSettingTab(new BrainTerminalSettingTab(this.app, this));
     this.registerEditorExtension(diffExtension);
+    this.app.workspace.updateOptions(); // force existing editors to pick up diffExtension
     this.registerImagePasteHandler();
 
-    // Snapshot open files for diff baseline
-    this.app.workspace.iterateAllLeaves(leaf => {
-      if (leaf.view instanceof MarkdownView && leaf.view.file) {
-        this.snapshotFile(leaf.view.file.path);
-      }
-    });
-
     this.updateContext();
-    this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.updateContext()));
-    this.registerEvent(this.app.vault.on("create", f => { if (f instanceof TFile && f.extension === "md") this.handleCreate(f); }));
-    this.registerEvent(this.app.vault.on("modify", f => { if (f instanceof TFile && f.extension === "md") this.handleModify(f); }));
+    this.registerEvent(this.app.workspace.on("active-leaf-change", () => {
+      this.updateContext();
+      // Snapshot the newly-active file so we always have a baseline
+      const f = this.app.workspace.getActiveFile();
+      if (f?.extension === "md") this.snapshotFile(f.path);
+    }));
+
+    this.registerEvent(this.app.vault.on("create", f => {
+      if (f instanceof TFile && f.extension === "md") this.handleCreate(f);
+    }));
+    this.registerEvent(this.app.vault.on("modify", f => {
+      if (f instanceof TFile && f.extension === "md") this.handleModify(f);
+    }));
 
     this.openNoteWatcher = setInterval(() => this.checkOpenNote(), 250);
 
-    await this.maybeScaffoldStarterPack();
+    this.app.workspace.onLayoutReady(() => this.maybeScaffoldStarterPack());
     btLog("loaded");
   }
 
   onunload(): void {
     this.isUnloaded = true;
     if (this.openNoteWatcher) clearInterval(this.openNoteWatcher);
-    this.diffFadeTimers.forEach(t => clearTimeout(t));
+    this.diffFadeTimers.forEach(v => clearTimeout(v.timer));
     this.modifyDebounceTimers.forEach(t => clearTimeout(t));
     this.diffFadeTimers.clear();
     this.modifyDebounceTimers.clear();
     this.fileContentCache.clear();
     this.pendingDiffBaselines.clear();
     try { require("fs").unlinkSync(this.contextFile); } catch { /* */ }
-    try { require("fs").unlinkSync(this.openNoteFile); } catch { /* */ }
+    try { require("fs").writeFileSync(this.openNoteFile, "", "utf8"); } catch { /* */ }
     this.app.workspace.detachLeavesOfType(VIEW_TYPE_TERMINAL);
     btLog("unloaded");
+  }
+
+  // Called by TerminalView when the first terminal spawns
+  onFirstTerminal(): void {
+    if (this._snapshotDone) return;
+    this._snapshotDone = true;
+    btLog("first terminal — snapshotting all markdown files");
+    // Synchronously snapshot every markdown file for diff baselines
+    const fs = require("fs");
+    const path = require("path");
+    this.app.vault.getFiles().forEach(f => {
+      if (f.extension !== "md") return;
+      try {
+        const abs = path.join(this.vaultRoot, f.path);
+        const raw = fs.readFileSync(abs, "utf8").replace(/\r\n/g, "\n");
+        this.cacheSet(f.path, raw.split("\n"));
+      } catch { /* */ }
+    });
+    btLog("snapshot done,", this.fileContentCache.size, "files");
   }
 
   async loadSettings(): Promise<void> {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
   }
-
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
   }
 
   // ─── Terminal ────────────────────────────────────────────────────────────────
 
+  private _toggleGuard = false;
+
   private createNewTerminal(): void {
-    const leaf = this.app.workspace.getRightLeaf(false);
-    leaf?.setViewState({ type: VIEW_TYPE_TERMINAL });
+    const leaf = this.app.workspace.getRightLeaf(false) ?? this.app.workspace.getLeaf("split");
+    if (!leaf) return;
+    leaf.setViewState({ type: VIEW_TYPE_TERMINAL }).then(() => {
+      this.app.workspace.revealLeaf(leaf);
+    });
   }
 
   private toggleTerminal(): void {
+    if (this._toggleGuard) return;
+    this._toggleGuard = true;
+    setTimeout(() => this._toggleGuard = false, 300);
     const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL);
     if (leaves.length > 0) leaves.forEach(l => l.detach());
     else this.createNewTerminal();
@@ -105,52 +145,71 @@ export default class BrainTerminalPlugin extends Plugin {
 
   // ─── .open-note ──────────────────────────────────────────────────────────────
 
-  private _lastOpenNote = "";
   private async checkOpenNote(): Promise<void> {
     if (this.isUnloaded) return;
     try {
-      const raw = require("fs").readFileSync(this.openNoteFile, "utf8");
-      if (raw === this._lastOpenNote) return;
+      const fs = require("fs");
+      const raw = fs.readFileSync(this.openNoteFile, "utf8").trim();
+      if (!raw || raw === this._lastOpenNote) return;
       this._lastOpenNote = raw;
-      require("fs").writeFileSync(this.openNoteFile, "", "utf8");
+      fs.writeFileSync(this.openNoteFile, "", "utf8"); // blank immediately
+
       const { parseOpenSignal } = await import("./parse-open-signal");
-      const vaultRoot = (this.app.vault.adapter as any).basePath ?? "";
-      for (const lineRaw of raw.split("\n")) {
-        const sig = parseOpenSignal(lineRaw, vaultRoot);
-        if (sig) this.openNote(sig.path, sig.line);
+      for (const line of raw.split("\n")) {
+        const sig = parseOpenSignal(line.trim(), this.vaultRoot);
+        if (sig) await this.openNote(sig.path, sig.line);
       }
+
+      // After opening, apply any pending diff baselines
+      setTimeout(() => this.applyPendingDiffs(), 500);
     } catch { /* file not created yet */ }
   }
 
-  private openNote(vaultRelPath: string, line?: number): void {
+  private async openNote(vaultRelPath: string, line?: number): Promise<void> {
     const file = this.app.vault.getFileByPath(normalizePath(vaultRelPath));
-    if (!file) return;
+    if (!file) { btLog("openNote: not found:", vaultRelPath); return; }
+    btLog("openNote:", file.path, "line:", line);
+
+    // Snapshot before open so diff baseline is ready
+    this.snapshotFile(file.path);
+
     const existing = this.app.workspace.getLeavesOfType("markdown")
       .find(l => (l.view as MarkdownView).file?.path === file.path);
+
     if (existing) {
+      this.app.workspace.revealLeaf(existing);
       if (line && existing.view instanceof MarkdownView)
         existing.view.editor.setCursor({ line: line - 1, ch: 0 });
       return;
     }
-    this.app.workspace.openLinkText(file.path, "", false).then(() => {
-      if (!line) return;
+
+    const leaf = this.app.workspace.getLeaf("tab");
+    await leaf.openFile(file);
+    this.app.workspace.revealLeaf(leaf);
+    if (line && leaf.view instanceof MarkdownView) {
       setTimeout(() => {
-        const leaf = this.app.workspace.getMostRecentLeaf();
-        if (leaf?.view instanceof MarkdownView)
-          leaf.view.editor.setCursor({ line: line - 1, ch: 0 });
-      }, 100);
-    });
+        (leaf.view as MarkdownView).editor.setCursor({ line: line - 1, ch: 0 });
+      }, 150);
+    }
   }
 
-  // ─── Diff ────────────────────────────────────────────────────────────────────
-
-  private snapshotFile(filePath: string): void {
-    try {
-      const abs = require("path").join((this.app.vault.adapter as any).basePath ?? "", filePath);
-      const raw = require("fs").readFileSync(abs, "utf8");
-      this.cacheSet(filePath, raw.replace(/\r\n/g, "\n").split("\n"));
-    } catch { /* */ }
+  private async applyPendingDiffs(): Promise<void> {
+    for (const [relPath, baseline] of this.pendingDiffBaselines) {
+      const file = this.app.vault.getFileByPath(normalizePath(relPath));
+      if (!file) continue;
+      try {
+        const content = await this.app.vault.read(file);
+        const newLines = content.replace(/\r\n/g, "\n").split("\n");
+        const diff = computeDiff(baseline, newLines);
+        if (diff.hunks.length > 0) this.dispatchDiff(file, diff);
+        this.startFadeTimer(relPath, baseline);
+      } catch { /* */ }
+      this.pendingDiffBaselines.delete(relPath);
+    }
+    this.restoreTerminalFocus();
   }
+
+  // ─── Diff system ─────────────────────────────────────────────────────────────
 
   private cacheSet(filePath: string, lines: string[]): void {
     if (this.fileContentCache.size >= MAX_CACHE) {
@@ -160,25 +219,60 @@ export default class BrainTerminalPlugin extends Plugin {
     this.fileContentCache.set(filePath, lines);
   }
 
+  private snapshotFile(filePath: string): void {
+    if (this.fileContentCache.has(filePath)) return; // already cached
+    try {
+      const abs = require("path").join(this.vaultRoot, filePath);
+      const raw = require("fs").readFileSync(abs, "utf8").replace(/\r\n/g, "\n");
+      this.cacheSet(filePath, raw.split("\n"));
+    } catch { /* */ }
+  }
+
+  private startFadeTimer(filePath: string, baseline: string[]): void {
+    const existing = this.diffFadeTimers.get(filePath);
+    if (existing) {
+      clearTimeout(existing.timer); // reset timer but KEEP original baseline
+    }
+    const keepBaseline = existing?.baseline ?? baseline;
+    const timer = setTimeout(() => {
+      if (this.isUnloaded) return;
+      this.dispatchClearDiff(filePath);
+      this.diffFadeTimers.delete(filePath);
+      this.shownScrollLines.delete(filePath);
+    }, DIFF_FADE_MS);
+    this.diffFadeTimers.set(filePath, { baseline: keepBaseline, timer });
+  }
+
   private async handleCreate(file: TFile): Promise<void> {
     if (this.isUnloaded) return;
+    if (!this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL).length) return;
     await new Promise(r => setTimeout(r, 500));
+    if (this.isUnloaded) return;
     const content = await this.app.vault.read(file);
-    const newLines = content.split("\n");
-    const baseline = this.pendingDiffBaselines.get(file.path) ?? [];
-    this.pendingDiffBaselines.delete(file.path);
+    const newLines = content.replace(/\r\n/g, "\n").split("\n");
     this.cacheSet(file.path, newLines);
-    const diff = computeDiff(baseline, newLines);
-    if (diff.hunks.length > 0) this.showDiff(file, diff);
-    this.startFadeTimer(file.path, newLines);
+    const diff = computeDiff([], newLines);
+    if (diff.hunks.length > 0) await this.showDiffHighlights(file, diff);
+    this.startFadeTimer(file.path, []);
   }
 
   private handleModify(file: TFile): void {
     if (this.isUnloaded) return;
+    if (!this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL).length) return;
+    // Don't diff files the user is actively editing
+    const active = this.app.workspace.getActiveFile();
+    const isUserEditing = active?.path === file.path &&
+      !this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL)
+        .some(l => l === this.app.workspace.activeLeaf);
+    if (isUserEditing) {
+      // Just update cache silently
+      this.app.vault.read(file).then(c => this.cacheSet(file.path, c.replace(/\r\n/g, "\n").split("\n")));
+      return;
+    }
+
     const t = this.modifyDebounceTimers.get(file.path);
     if (t) clearTimeout(t);
-    this.modifyDebounceTimers.set(
-      file.path,
+    this.modifyDebounceTimers.set(file.path,
       setTimeout(() => this.doModify(file), MODIFY_DEBOUNCE_MS)
     );
   }
@@ -186,41 +280,137 @@ export default class BrainTerminalPlugin extends Plugin {
   private async doModify(file: TFile): Promise<void> {
     if (this.isUnloaded) return;
     this.modifyDebounceTimers.delete(file.path);
-    const baseline = this.fileContentCache.get(file.path);
+
     const content = await this.app.vault.read(file);
-    const newLines = content.split("\n");
+    const newLines = content.replace(/\r\n/g, "\n").split("\n");
+
+    // Get baseline: prefer fade-timer's original baseline over cache
+    const fadeEntry = this.diffFadeTimers.get(file.path);
+    const baseline = fadeEntry?.baseline ?? this.fileContentCache.get(file.path);
+
     this.cacheSet(file.path, newLines);
-    if (!baseline) { this.startFadeTimer(file.path, newLines); return; }
+
+    if (!baseline) {
+      btLog("doModify: no baseline for", file.path, "— skipping diff");
+      return;
+    }
+
+    const isOpen = this.app.workspace.getLeavesOfType("markdown")
+      .some(l => (l.view as MarkdownView).file?.path === file.path);
+
+    if (!isOpen) {
+      // Store pending baseline — diff will be shown when .open-note opens this file
+      if (!this.pendingDiffBaselines.has(file.path))
+        this.pendingDiffBaselines.set(file.path, baseline);
+      return;
+    }
+
     const diff = computeDiff(baseline, newLines);
-    if (diff.hunks.length > 0) this.showDiff(file, diff);
-    this.startFadeTimer(file.path, newLines);
+    btLog("doModify", file.path, "hunks:", diff.hunks.length, "added:", diff.addedCount, "removed:", diff.removedCount);
+    if (diff.hunks.length > 0) await this.showDiffHighlights(file, diff);
+    this.startFadeTimer(file.path, baseline);
   }
 
-  private startFadeTimer(filePath: string, baseline: string[]): void {
-    const t = this.diffFadeTimers.get(filePath);
-    if (t) clearTimeout(t);
-    this.diffFadeTimers.set(filePath, setTimeout(() => {
-      if (this.isUnloaded) return;
-      this.clearDiff(filePath);
-      this.diffFadeTimers.delete(filePath);
-      this.cacheSet(filePath, baseline);
-    }, DIFF_FADE_MS));
+  // ─── showDiffHighlights ───────────────────────────────────────────────────────
+
+  private async showDiffHighlights(file: TFile, diff: import("./diff-engine").DiffResult): Promise<void> {
+    const restoreLeaf = this.app.workspace.activeLeaf;
+    const isUserInTerminal = this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL)
+      .some(l => l === restoreLeaf);
+
+    const existingLeaf = this.app.workspace.getLeavesOfType("markdown")
+      .find(l => (l.view as MarkdownView).file?.path === file.path);
+
+    if (existingLeaf) {
+      // Path 1: file already open — dispatch decorations
+      this.dispatchDiff(file, diff);
+
+      // Only scroll if user is in terminal
+      if (!isUserInTerminal) return;
+
+      // Collect new scroll targets (lines not yet shown)
+      const shown = this.shownScrollLines.get(file.path) ?? new Set<number>();
+      const targets: number[] = [];
+      for (const hunk of diff.hunks) {
+        const firstNew = hunk.lines.find(l => l.type !== "removed" && l.newLineNo != null)?.newLineNo;
+        if (firstNew && !shown.has(firstNew)) {
+          targets.push(firstNew);
+          shown.add(firstNew);
+        }
+      }
+      this.shownScrollLines.set(file.path, shown);
+      if (!targets.length) return;
+
+      // Scroll through each hunk
+      const dwell = targets.length === 1 ? 150 : 1200;
+      this.app.workspace.revealLeaf(existingLeaf);
+      for (const lineNo of targets) {
+        await this.scrollEditorToLine(existingLeaf, lineNo);
+        await new Promise(r => setTimeout(r, dwell));
+      }
+      // Restore focus to terminal
+      if (restoreLeaf) this.app.workspace.setActiveLeaf(restoreLeaf, { focus: true });
+      this.focusTerminal();
+
+    } else {
+      // Path 2: file not open — open in new tab, restore terminal focus immediately
+      const newLeaf = this.app.workspace.getLeaf("tab");
+      await newLeaf.openFile(file);
+      this.app.workspace.revealLeaf(newLeaf);
+      if (restoreLeaf) this.app.workspace.setActiveLeaf(restoreLeaf, { focus: true });
+      this.focusTerminal();
+
+      // Poll for cm to be ready then dispatch decorations
+      let attempts = 0;
+      const poll = setInterval(() => {
+        if (this.isUnloaded || attempts++ > 10) { clearInterval(poll); return; }
+        const cm = (newLeaf.view as any)?.editor?.cm;
+        if (!cm) return;
+        clearInterval(poll);
+        cm.dispatch({ effects: setDiffEffect.of(diff) });
+        // Scroll to first changed line
+        const firstLine = diff.hunks[0]?.lines.find(l => l.type !== "removed" && l.newLineNo != null)?.newLineNo ?? 1;
+        this.scrollEditorToLine(newLeaf, firstLine);
+      }, 100);
+    }
   }
 
-  private showDiff(file: TFile, diff: import("./diff-engine").DiffResult): void {
+  private dispatchDiff(file: TFile, diff: import("./diff-engine").DiffResult): void {
     const leaf = this.app.workspace.getLeavesOfType("markdown")
       .find(l => (l.view as MarkdownView).file?.path === file.path);
-    if (!leaf || !(leaf.view instanceof MarkdownView)) return;
-    const cm = (leaf.view.editor as any).cm;
+    if (!leaf) return;
+    const cm = (leaf.view as any)?.editor?.cm;
     if (cm) cm.dispatch({ effects: setDiffEffect.of(diff) });
   }
 
-  private clearDiff(filePath: string): void {
+  private dispatchClearDiff(filePath: string): void {
     const leaf = this.app.workspace.getLeavesOfType("markdown")
       .find(l => (l.view as MarkdownView).file?.path === filePath);
-    if (!leaf || !(leaf.view instanceof MarkdownView)) return;
-    const cm = (leaf.view.editor as any).cm;
+    if (!leaf) return;
+    const cm = (leaf.view as any)?.editor?.cm;
     if (cm) cm.dispatch({ effects: setDiffEffect.of(null) });
+  }
+
+  private async scrollEditorToLine(leaf: WorkspaceLeaf, lineNo: number): Promise<void> {
+    const cm = (leaf.view as any)?.editor?.cm;
+    if (!cm) return;
+    try {
+      const { EditorView } = require("@codemirror/view");
+      const pos = cm.state.doc.line(Math.min(lineNo, cm.state.doc.lines)).from;
+      cm.dispatch({ effects: EditorView.scrollIntoView(pos, { y: "center" }) });
+    } catch { /* @codemirror/view not available via require — use editor API */
+      if (leaf.view instanceof MarkdownView)
+        leaf.view.editor.setCursor({ line: lineNo - 1, ch: 0 });
+    }
+  }
+
+  private focusTerminal(): void {
+    const tLeaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL)[0];
+    if (tLeaf) (tLeaf.view as any)?.focusTerminal?.();
+  }
+
+  private restoreTerminalFocus(): void {
+    this.focusTerminal();
   }
 
   // ─── Image paste ─────────────────────────────────────────────────────────────
@@ -250,17 +440,237 @@ export default class BrainTerminalPlugin extends Plugin {
   // ─── Starter pack ────────────────────────────────────────────────────────────
 
   private async maybeScaffoldStarterPack(): Promise<void> {
-    const data = (await this.loadData()) ?? {};
-    if (data.starterPackVersion) return;
+    let data = (await this.loadData()) ?? {};
+    let { STARTER_PACK, STARTER_PACK_VERSION } = { STARTER_PACK: [] as any[], STARTER_PACK_VERSION: "0" };
     try {
-      const { STARTER_PACK, STARTER_PACK_VERSION } = await import("./starter-pack");
-      for (const { path: p, content } of STARTER_PACK) {
-        const norm = normalizePath(p);
+      ({ STARTER_PACK, STARTER_PACK_VERSION } = await import("./starter-pack"));
+    } catch { btLog("starter pack not bundled — skipping"); return; }
+
+    const installedVersion = data.starterPackVersion ?? "0";
+
+    // ── Detect existing vault structure ──────────────────────────────────────
+    const vaultState = await this.detectVaultState();
+    btLog("vault state:", vaultState);
+
+    // ── First install ─────────────────────────────────────────────────────────
+    if (installedVersion === "0") {
+      if (vaultState === "good") {
+        // Well organized vault — only copy bridge files, never touch their content
+        btLog("well-organized vault detected — copying bridge files only");
+        await this.copyBridgeFiles(STARTER_PACK);
+
+      } else if (vaultState === "partial") {
+        // Some structure exists — create missing folders + missing templates only
+        btLog("partial vault — creating missing folders and templates");
+        await this.scaffoldVaultStructure();   // creates missing folders
+        await this.copyBridgeFiles(STARTER_PACK); // bridge files
+        // Copy only templates that don't exist yet
+        for (const { path: p, content } of STARTER_PACK) {
+          if (!normalizePath(p).includes("_templates")) continue;
+          const norm = normalizePath(p);
+          if (!await this.app.vault.adapter.exists(norm))
+            await this.app.vault.create(norm, content);
+        }
+
+      } else {
+        // Empty vault — scaffold everything from scratch
+        btLog("empty vault — scaffolding full structure");
+        await this.scaffoldVaultStructure();   // folders + Home.md
+        for (const { path: p, content } of STARTER_PACK) {
+          const norm = normalizePath(p);
+          if (!await this.app.vault.adapter.exists(norm))
+            await this.app.vault.create(norm, content);
+        }
+        new (require("obsidian").Notice)("Brain Terminal: vault structure created! Check Home.md to get started.");
+      }
+
+      await this.saveData({ ...data, starterPackVersion: STARTER_PACK_VERSION });
+      btLog("starter pack installed v" + STARTER_PACK_VERSION);
+      return;
+    }
+
+    // ── Update check ──────────────────────────────────────────────────────────
+    if (STARTER_PACK_VERSION > installedVersion) {
+      btLog("starter pack update:", installedVersion, "→", STARTER_PACK_VERSION);
+      await this.applyStarterPackUpdate(STARTER_PACK, installedVersion, STARTER_PACK_VERSION);
+      await this.saveData({ ...data, starterPackVersion: STARTER_PACK_VERSION });
+    }
+  }
+
+  /** Checks how organized the vault is. Returns "good" | "partial" | "empty" */
+  private async detectVaultState(): Promise<"good" | "partial" | "empty"> {
+    const checks = [
+      { path: "_templates", weight: 2 },   // templates folder = strong signal
+      { path: "project",    weight: 2 },   // project folder = strong signal
+      { path: "skills",     weight: 1 },
+      { path: "ideas",      weight: 1 },
+      { path: "learning",   weight: 1 },
+      { path: "CLAUDE.md",           weight: 1 },
+      { path: ".brain/AGENT.md",     weight: 2 },
+    ];
+    let score = 0;
+    for (const c of checks) {
+      if (await this.app.vault.adapter.exists(normalizePath(c.path))) score += c.weight;
+    }
+    // Also check if _templates has actual .md files in it
+    let templateCount = 0;
+    if (await this.app.vault.adapter.exists(normalizePath("_templates"))) {
+      const listed = await this.app.vault.adapter.list(normalizePath("_templates"));
+      templateCount = (listed.files ?? []).filter((f: string) => f.endsWith(".md")).length;
+      if (templateCount >= 3) score += 2;
+    }
+    if (score >= 6) return "good";     // well organized — skip setup
+    if (score >= 2) return "partial";  // some structure — create missing pieces
+    return "empty";                    // blank vault — create everything
+  }
+
+  /** Create the full recommended folder + README structure for a blank/partial vault */
+  private async scaffoldVaultStructure(): Promise<void> {
+    const fs = require("fs");
+    const path = require("path");
+    const folders = [
+      "project",
+      "skills",
+      "ideas",
+      "learning",
+      "training",
+      "docs",
+      "images",
+      "_templates",
+      "AI Profiles",
+    ];
+
+    // Create folders (Obsidian needs at least one file in each)
+    for (const folder of folders) {
+      const norm = normalizePath(folder);
+      if (!await this.app.vault.adapter.exists(norm)) {
+        // Create a .gitkeep so the folder exists
+        await this.app.vault.create(normalizePath(`${folder}/.gitkeep`), "");
+        btLog("created folder:", folder);
+      }
+    }
+
+    // Create a Home note as the vault entry point
+    const homePath = normalizePath("Home.md");
+    if (!await this.app.vault.adapter.exists(homePath)) {
+      await this.app.vault.create(homePath,
+`---
+tags:
+  - "#home"
+---
+# Welcome to Your Vault
+
+This vault is powered by **Brain Terminal** — an AI terminal inside Obsidian.
+
+---
+
+## Your Folders
+
+| Folder | Purpose |
+|---|---|
+| [[project/]] | One subfolder per project |
+| [[skills/]] | One note per skill |
+| [[ideas/]] | Raw ideas and brainstorms |
+| [[learning/]] | Learning journeys and research |
+| [[training/]] | Training logs and habits |
+| [[docs/]] | Reference documentation |
+| [[AI Profiles/]] | AI persona configs |
+| [[_templates/]] | Note templates — do not edit |
+
+---
+
+## Quick Start
+
+1. Open Brain Terminal (brain icon in ribbon)
+2. Run \`claude\` or \`devin\` in the terminal
+3. Your AI can see what note you're on and edit your vault live
+
+---
+
+## Brain Terminal Files
+
+- \`.brain/AGENT.md\` — your AI router (living document)
+- \`.brain/vault-structure.md\` — your vault map (auto-updated)
+- \`CLAUDE.md\` — Claude Code instructions
+`);
+      btLog("created Home.md");
+    }
+  }
+
+  /** Copy only bridge files (CLAUDE.md, .brain/, .agents/AGENT.md) — skip templates */
+  private async copyBridgeFiles(pack: any[]): Promise<void> {
+    const bridgePaths = [
+      "CLAUDE.md",
+      ".brain/AGENT.md",
+      ".brain/vault-structure.md",
+      ".brain/note-format.md",
+      ".brain/profiles/note-manager.md",
+      ".brain/profiles/brainstormer.md",
+      ".brain/profiles/researcher.md",
+      ".brain/profiles/project-manager.md",
+      ".brain/profiles/git-manager.md",
+      ".brain/profiles/mermaid-writer.md",
+      ".agents/AGENT.md",
+    ];
+    for (const { path: p, content } of pack) {
+      const norm = normalizePath(p);
+      if (bridgePaths.some(b => norm.endsWith(normalizePath(b)))) {
         if (!await this.app.vault.adapter.exists(norm))
           await this.app.vault.create(norm, content);
       }
-      await this.saveData({ ...data, starterPackVersion: STARTER_PACK_VERSION });
-      btLog("starter pack scaffolded");
-    } catch { btLog("starter pack not bundled — skipping"); }
+    }
+  }
+
+  /** Merge update: add new files, append new sections to existing profiles */
+  private async applyStarterPackUpdate(pack: any[], oldVersion: string, newVersion: string): Promise<void> {
+    const date = new Date().toISOString().slice(0, 10);
+
+    for (const { path: p, content, updateStrategy } of pack) {
+      const norm = normalizePath(p);
+      const exists = await this.app.vault.adapter.exists(norm);
+
+      if (!exists) {
+        // New file added in this version — always copy
+        await this.app.vault.create(norm, content);
+        btLog("update: added new file", norm);
+        continue;
+      }
+
+      if (updateStrategy === "never") continue; // vault-structure.md — user owns it
+
+      if (updateStrategy === "append" && exists) {
+        // Append new sections to existing profiles/note-format
+        const existing = await this.app.vault.adapter.read(norm);
+        if (!existing.includes(`<!-- bt-version:${newVersion} -->`)) {
+          const addition = `\n\n<!-- bt-version:${newVersion} -->\n${content}`;
+          await this.app.vault.adapter.write(norm, existing + addition);
+          btLog("update: appended new sections to", norm);
+        }
+        continue;
+      }
+
+      // Default: skip (never overwrite user content)
+    }
+
+    // Append update entry to AGENT.md update_log
+    const agentPath = normalizePath(".brain/AGENT.md");
+    if (await this.app.vault.adapter.exists(agentPath)) {
+      const agentContent = await this.app.vault.adapter.read(agentPath);
+      const logEntry = `  - "${date} — Plugin updated to v${newVersion}. New profiles and templates added."`;
+      if (!agentContent.includes(logEntry)) {
+        // Insert into update_log in frontmatter
+        const updated = agentContent.replace(
+          /^(update_log:.*?)(\n---)/ms,
+          `$1\n${logEntry}$2`
+        ).replace(
+          /^(version:)\s*.+$/m,
+          `$1 ${newVersion}`
+        );
+        await this.app.vault.adapter.write(agentPath, updated);
+        btLog("update: AGENT.md version bumped to", newVersion);
+      }
+    }
+
+    new (require("obsidian").Notice)(`Brain Terminal updated to v${newVersion} — new agent profiles available`);
   }
 }

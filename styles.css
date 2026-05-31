@@ -4,6 +4,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  overflow: hidden;
 }
 
 .brain-terminal-header {
@@ -14,21 +15,87 @@
   background: var(--background-secondary);
   border-bottom: 1px solid var(--background-modifier-border);
   flex-shrink: 0;
+  user-select: none;
+}
+
+.brain-terminal-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-normal);
+  cursor: default;
+  user-select: none;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.brain-terminal-name:hover {
+  background: var(--background-modifier-hover);
+}
+
+.brain-terminal-rename-input {
+  font-weight: 600;
+  font-size: 13px;
+  background: var(--background-modifier-form-field);
+  border: 1px solid var(--interactive-accent);
+  border-radius: 4px;
+  color: var(--text-normal);
+  padding: 1px 4px;
+  outline: none;
+  width: 160px;
+}
+
+.brain-terminal-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.brain-terminal-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.brain-terminal-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
 }
 
 .brain-terminal-xterm {
   flex: 1;
   overflow: hidden;
+  min-height: 0;
+}
+
+.brain-terminal-xterm .xterm {
+  height: 100%;
+}
+
+/* Maximized mode */
+.brain-terminal-maximized {
+  position: fixed !important;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 9999;
+  width: 100vw !important;
+  height: 100vh !important;
 }
 
 /* Live diff decorations */
 .brain-diff-added {
-  background-color: rgba(0, 200, 80, 0.18);
+  background-color: rgba(0, 200, 80, 0.18) !important;
 }
 
 .brain-diff-removed-line {
-  color: rgba(255, 80, 80, 0.7);
+  background-color: rgba(255, 60, 60, 0.12);
+  color: rgba(255, 80, 80, 0.8);
   font-style: italic;
   pointer-events: none;
   user-select: none;
+  padding-left: 4px;
+  display: block;
+  width: 100%;
 }

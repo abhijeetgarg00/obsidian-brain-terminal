@@ -5,11 +5,12 @@
 import { execSync } from "child_process";
 import path from "path";
 import { fileURLToPath } from "url";
+import { existsSync } from "fs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ptyDir = path.join(__dirname, "..", "node_modules", "node-pty");
 
-if (!require("fs").existsSync(ptyDir)) {
+if (!existsSync(ptyDir)) {
   console.error("[install-pty] node-pty not found — run npm install first");
   process.exit(1);
 }
@@ -17,15 +18,16 @@ if (!require("fs").existsSync(ptyDir)) {
 // Detect Obsidian's Electron version
 let electronVersion = "32";
 try {
-  const { execSync: ex } = await import("child_process");
-  // Try to read Electron version from Obsidian's resources
-  const candidates = [
-    "C:/Users/" + process.env["USERNAME"] + "/AppData/Local/Obsidian/resources/electron.asar",
-    "/Applications/Obsidian.app/Contents/Resources/electron.asar",
-  ];
-  // Fall back to npx @electron/get detection
-  const raw = execSync("npx @electron/get --version 2>/dev/null || echo 32", { encoding: "utf8" }).trim();
-  electronVersion = raw.match(/\d+/)?.[0] ?? "32";
+  // Try to detect from Obsidian's package.json or app.asar
+  const obsidianPath = "C:/Users/" + process.env["USERNAME"] + "/AppData/Local/Obsidian";
+  const pkgPath = path.join(obsidianPath, "resources", "app", "package.json");
+  if (existsSync(pkgPath)) {
+    const { readFileSync } = await import("fs");
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+    const ver = pkg.electronVersion ?? pkg.devDependencies?.electron ?? "";
+    const match = ver.match(/(\d+)/);
+    if (match) electronVersion = match[1];
+  }
 } catch {
   console.log("[install-pty] could not detect Electron version, using", electronVersion);
 }
@@ -34,7 +36,7 @@ console.log(`[install-pty] rebuilding node-pty for Electron ${electronVersion}`)
 
 try {
   execSync(
-    `npx @electron/rebuild -v ${electronVersion}.x.x -m . -w node-pty`,
+    `npx @electron/rebuild -v ${electronVersion}.0.0 -m . -w node-pty`,
     { cwd: path.join(__dirname, ".."), stdio: "inherit" }
   );
   console.log("[install-pty] done");
@@ -45,6 +47,7 @@ try {
       `npx node-pre-gyp install --fallback-to-build`,
       { cwd: ptyDir, stdio: "inherit" }
     );
+    console.log("[install-pty] fallback done");
   } catch (e) {
     console.error("[install-pty] all rebuild attempts failed:", e.message);
     process.exit(1);

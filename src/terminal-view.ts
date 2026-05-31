@@ -1,12 +1,14 @@
-import { ItemView, WorkspaceLeaf } from "obsidian";
+import { ItemView, WorkspaceLeaf, Scope } from "obsidian";
+import { Terminal } from "@xterm/xterm";
 import type { ITerminalOptions } from "@xterm/xterm";
+import { FitAddon } from "@xterm/addon-fit";
+// @ts-ignore — css loaded as text by esbuild
+import xtermCss from "@xterm/xterm/css/xterm.css";
 import { VIEW_TYPE_TERMINAL, THEMES, btLog } from "./constants";
 import type { BrainTerminalSettings } from "./constants";
 
-// node-pty and xterm loaded at runtime from plugin dir
+// node-pty loaded at runtime from plugin dir (native module — stays external)
 type IPty = import("node-pty").IPty;
-type Terminal = import("@xterm/xterm").Terminal;
-type FitAddon = import("@xterm/addon-fit").FitAddon;
 
 export class TerminalView extends ItemView {
   static instanceCount = 0;
@@ -14,24 +16,33 @@ export class TerminalView extends ItemView {
   private terminal: Terminal | null = null;
   private fitAddon: FitAddon | null = null;
   private pty: IPty | null = null;
+
   private resizeObserver: ResizeObserver | null = null;
-  private scope: any = null; // obsidian Scope
+  private scope: Scope | null = null;
   private windowListener: ((e: KeyboardEvent) => void) | null = null;
   private isUnloaded = false;
   private instanceId: number;
+  private terminalName: string;
+  private nameSpan: HTMLElement | null = null;
 
   constructor(
     leaf: WorkspaceLeaf,
     private settings: BrainTerminalSettings,
-    private pluginDir: string
+    private pluginDir: string,
+    private onFirstTerminal?: () => void
   ) {
     super(leaf);
     this.instanceId = ++TerminalView.instanceCount;
+    this.terminalName = `Brain Terminal ${this.instanceId}`;
   }
 
   getViewType(): string { return VIEW_TYPE_TERMINAL; }
-  getDisplayText(): string { return `Terminal <${this.instanceId}>`; }
-  getIcon(): string { return "terminal"; }
+  getDisplayText(): string { return this.terminalName; }
+  getIcon(): string { return "brain"; }
+
+  focusTerminal(): void {
+    this.terminal?.focus();
+  }
 
   async onOpen(): Promise<void> {
     this.buildDOM();
@@ -45,41 +56,80 @@ export class TerminalView extends ItemView {
   // ─── DOM ────────────────────────────────────────────────────────────────────
 
   private buildDOM(): void {
-    const root = this.containerEl.children[1] as HTMLElement;
+    const root = this.contentEl;
     root.empty();
     root.addClass("brain-terminal-container");
 
     const header = root.createDiv({ cls: "brain-terminal-header" });
-    header.createSpan({ text: `Terminal ${this.instanceId}` });
 
-    const actions = header.createDiv();
-    const btn = (label: string, cb: () => void) => {
-      const b = actions.createEl("button", { text: label });
+    // Name — double-click to rename
+    this.nameSpan = header.createSpan({ text: this.terminalName, cls: "brain-terminal-name" });
+    this.nameSpan.title = "Double-click to rename";
+    this.nameSpan.ondblclick = () => this.startRename();
+
+    const actions = header.createDiv({ cls: "brain-terminal-actions" });
+    const btn = (label: string, tooltip: string, cb: () => void) => {
+      const b = actions.createEl("button", { text: label, cls: "brain-terminal-btn" });
+      b.title = tooltip;
+      b.setAttribute("aria-label", tooltip);
       b.onclick = cb;
       return b;
     };
-    btn("+", () => this.app.workspace.getLeaf(true).setViewState({ type: VIEW_TYPE_TERMINAL }));
-    btn("↺", () => this.restartPty());
-    btn("⬜", () => this.containerEl.toggleClass("brain-terminal-maximized", !this.containerEl.hasClass("brain-terminal-maximized")));
-    btn("✕", () => this.leaf.detach());
+    btn("+", "New terminal", () => this.app.workspace.getRightLeaf(false)?.setViewState({ type: VIEW_TYPE_TERMINAL }));
+    btn("↺", "Restart shell", () => this.restartPty());
+    btn("✕", "Close terminal", () => this.leaf.detach());
 
     root.createDiv({ cls: "brain-terminal-xterm" });
   }
 
+  private startRename(): void {
+    if (!this.nameSpan) return;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = this.terminalName;
+    input.className = "brain-terminal-rename-input";
+    this.nameSpan.replaceWith(input);
+    input.focus();
+    input.select();
+
+    const commit = () => {
+      const newName = input.value.trim() || this.terminalName;
+      this.terminalName = newName;
+      this.nameSpan = document.createElement("span");
+      this.nameSpan.className = "brain-terminal-name";
+      this.nameSpan.textContent = newName;
+      this.nameSpan.title = "Double-click to rename";
+      this.nameSpan.ondblclick = () => this.startRename();
+      input.replaceWith(this.nameSpan);
+      // Update the tab title
+      this.leaf.updateHeader();
+    };
+    input.onblur = commit;
+    input.onkeydown = (e) => {
+      if (e.key === "Enter") { e.preventDefault(); commit(); }
+      if (e.key === "Escape") { e.preventDefault(); input.value = this.terminalName; commit(); }
+    };
+  }
+
   private get xtermMount(): HTMLElement {
-    return this.containerEl.querySelector(".brain-terminal-xterm") as HTMLElement;
+    return this.contentEl.querySelector(".brain-terminal-xterm") as HTMLElement;
   }
 
   // ─── xterm ──────────────────────────────────────────────────────────────────
 
-  private async spawnTerminal(): Promise<void> {
-    const { Terminal: XTerm } = await import(/* @vite-ignore */ `${this.pluginDir}/node_modules/@xterm/xterm/lib/xterm.js`).catch(() =>
-      (window as any).require("@xterm/xterm")
-    );
-    const { FitAddon: FA } = await import(/* @vite-ignore */ `${this.pluginDir}/node_modules/@xterm/addon-fit/lib/addon-fit.js`).catch(() =>
-      (window as any).require("@xterm/addon-fit")
-    );
+  private injectXtermCss(): void {
+    const id = "brain-terminal-xterm-css";
+    if (!document.getElementById(id)) {
+      const style = document.createElement("style");
+      style.id = id;
+      style.textContent = xtermCss;
+      document.head.appendChild(style);
+    }
+  }
 
+  private async spawnTerminal(): Promise<void> {
+    console.log("[BrainTerminal] spawnTerminal called, mount:", this.xtermMount);
+    this.injectXtermCss();
     const opts: ITerminalOptions = {
       fontFamily: this.settings.fontFamily,
       fontSize: this.settings.fontSize,
@@ -89,8 +139,8 @@ export class TerminalView extends ItemView {
       allowProposedApi: true,
     };
 
-    this.terminal = new XTerm(opts) as Terminal;
-    this.fitAddon = new FA() as FitAddon;
+    this.terminal = new Terminal(opts);
+    this.fitAddon = new FitAddon();
     this.terminal.loadAddon(this.fitAddon);
     this.terminal.open(this.xtermMount);
 
@@ -109,7 +159,11 @@ export class TerminalView extends ItemView {
 
     setTimeout(() => {
       this.fitAddon?.fit();
-      this.spawnPty();
+      this.spawnPty().catch(e => {
+        console.error("[BrainTerminal] spawnPty failed:", e);
+        this.terminal?.writeln(`\r\n[Brain Terminal] Failed to spawn shell: ${e.message}`);
+        this.terminal?.writeln(`[Brain Terminal] Check the Obsidian console for details.`);
+      });
     }, 50);
 
     this.registerKeyForwarding();
@@ -142,11 +196,15 @@ export class TerminalView extends ItemView {
   private async spawnPty(): Promise<void> {
     if (this.isUnloaded) return;
 
-    const nodePty = require(require("path").join(this.pluginDir, "node_modules", "node-pty"));
+    const ptyPath = require("path").join(this.pluginDir, "node_modules", "node-pty");
+    console.log("[BrainTerminal] loading node-pty from:", ptyPath);
+    const nodePty = require(ptyPath);
     const { shell, args } = this.resolveShell();
+    console.log("[BrainTerminal] spawning shell:", shell, args);
     const { cols, rows } = this.terminal ?? { cols: 80, rows: 24 };
 
     btLog("spawning PTY", shell, args);
+    this.onFirstTerminal?.();
 
     this.pty = nodePty.spawn(shell, args, {
       name: "xterm-256color",
@@ -161,8 +219,12 @@ export class TerminalView extends ItemView {
         OBSIDIAN_CONTEXT_FILE: "",
         OBSIDIAN_OPEN_FILE: "",
       },
-      useConpty: true,
+      useConpty: false,  // ConPTY deadlocks in Obsidian's Electron — use winpty
     }) as IPty;
+
+    // Welcome message
+    this.terminal?.writeln(`\x1b[1;36m${this.terminalName}\x1b[0m \x1b[2m— Built by Abhijeet Garg\x1b[0m`);
+    this.terminal?.writeln(`\x1b[2mType a command or let your AI CLI take the wheel.\x1b[0m\r\n`);
 
     this.pty.onData(data => this.terminal?.write(data));
     this.terminal?.onData(data => this.pty?.write(data));
@@ -189,19 +251,19 @@ export class TerminalView extends ItemView {
 
   private registerKeyForwarding(): void {
     // 1. Obsidian Scope for Ctrl+A-Z and Alt+A-Z
-    this.scope = new (this.app as any).keymap.Scope();
+    this.scope = new Scope();
     for (let c = 65; c <= 90; c++) {
       const key = String.fromCharCode(c);
       this.scope.register(["Ctrl"], key, (e: KeyboardEvent) => {
         this.forwardCtrlKeyToPty(key, e.shiftKey);
         return false;
       });
-      this.scope.register(["Alt"], key, (e: KeyboardEvent) => {
-        this.terminal?.attachCustomKeyEventHandler && this.terminal.write(`\x1b${key.toLowerCase()}`);
+      this.scope.register(["Alt"], key, () => {
+        this.terminal?.write(`\x1b${key.toLowerCase()}`);
         return false;
       });
     }
-    (this.app as any).keymap.pushScope(this.scope);
+    this.app.keymap.pushScope(this.scope);
 
     // 2. Window capture-phase listener (belt-and-suspenders)
     this.windowListener = (e: KeyboardEvent) => {
@@ -275,7 +337,7 @@ export class TerminalView extends ItemView {
       this.windowListener = null;
     }
     if (this.scope) {
-      (this.app as any).keymap.popScope(this.scope);
+      this.app.keymap.popScope(this.scope);
       this.scope = null;
     }
     this.killPty();

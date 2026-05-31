@@ -1,5 +1,6 @@
 import esbuild from "esbuild";
 import { builtinModules } from "module";
+import fs from "fs";
 
 const prod = process.argv[2] === "production";
 
@@ -18,6 +19,7 @@ const external = [
   "@lezer/highlight",
   "@lezer/lr",
   "node-pty",
+  // @xterm/* is NOT external — bundled directly into main.js
   ...builtinModules,
   ...builtinModules.map(m => `node:${m}`),
 ];
@@ -37,9 +39,18 @@ const ctx = await esbuild.context({
   loader: { ".css": "text" },
 });
 
+const PLUGIN_DIR = "D:/mindmap/MindMap/.obsidian/plugins/obsidian-brain-terminal";
+
+function copyStyles() {
+  try {
+    fs.copyFileSync("styles.css", `${PLUGIN_DIR}/styles.css`);
+  } catch { /* vault not present in prod */ }
+}
+
 if (prod) {
   await ctx.rebuild();
   process.exit(0);
 } else {
+  copyStyles();
   await ctx.watch();
 }
