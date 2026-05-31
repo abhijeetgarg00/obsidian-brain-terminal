@@ -224,15 +224,22 @@ export class TerminalView extends ItemView {
     }
 
     if (process.platform === "win32") {
+      const fs = require("fs");
       const candidates = [
-        process.env["ProgramFiles"] + "\\PowerShell\\7\\pwsh.exe",
-        process.env["ProgramFiles(x86)"] + "\\PowerShell\\7\\pwsh.exe",
-        process.env["LOCALAPPDATA"] + "\\Microsoft\\WindowsApps\\pwsh.exe",
+        // hardcoded first — process.env may be undefined inside Electron renderer
+        "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+        "C:\\Program Files (x86)\\PowerShell\\7\\pwsh.exe",
+        // env-based fallbacks
+        (process.env["ProgramFiles"]    ?? "") + "\\PowerShell\\7\\pwsh.exe",
+        (process.env["ProgramFiles(x86)"] ?? "") + "\\PowerShell\\7\\pwsh.exe",
+        (process.env["LOCALAPPDATA"]    ?? "") + "\\Microsoft\\WindowsApps\\pwsh.exe",
+        // last resort: inbox PowerShell 5
+        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
       ];
       for (const c of candidates) {
-        try {
-          if (require("fs").existsSync(c)) return { shell: c, args: [] };
-        } catch { /* skip */ }
+        if (!c.startsWith("\\") && c.length > 4) {
+          try { if (fs.existsSync(c)) return { shell: c, args: [] }; } catch { /* skip */ }
+        }
       }
       return { shell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", args: [] };
     }
@@ -303,17 +310,52 @@ export class TerminalView extends ItemView {
       const content = fs.readFileSync(agentPath, "utf8");
       if (!content.includes("first_run: true")) return;
 
-      const cli = this.settings.preferredCli; // "devin" | "claude"
+      const cli    = this.settings.preferredCli; // "devin" | "claude"
       const prompt = "Read AGENT.md now. It says first_run: true — run the First Run Sequence immediately, starting with Step 0. Do not wait for further input.";
 
-      // Wait for shell to settle, then type CLI command + Enter, then after CLI loads send the prompt
-      setTimeout(() => {
-        this.pty?.write(cli + "\r");
-        // Give the CLI ~4s to start up, then send the first-run prompt
-        setTimeout(() => {
-          this.pty?.write(prompt + "\r");
-        }, 4000);
-      }, 1500);
+      // Watch the PTY output stream for a shell prompt character (> or $),
+      // then send the CLI command. This is reliable regardless of shell startup time.
+      let launched = false;
+      let buf = "";
+      const unsub = this.pty?.onData((data: string) => {
+        if (launched) { unsub?.dispose(); return; }
+        buf += data;
+        // PowerShell shows "PS C:\...>" or "> ", bash shows "$ "
+        if (buf.includes(">") || buf.includes("$ ") || buf.includes("% ")) {
+          launched = true;
+          unsub?.dispose();
+          // Small extra delay so the prompt fully renders before we type
+          setTimeout(() => {
+            this.pty?.write(cli + "\r");
+            // Wait for the CLI to finish loading (watch for its prompt/ready signal)
+            // Devin shows its UI, Claude shows its prompt — give them time
+            // Wait for CLI output to go quiet for 1.5s — that means it's ready for input
+            let cliReady = false;
+            let quietTimer: ReturnType<typeof setTimeout> | null = null;
+            const unsubCli = this.pty?.onData((_d: string) => {
+              if (cliReady) { unsubCli?.dispose(); return; }
+              // Reset the quiet timer every time new data arrives
+              if (quietTimer) clearTimeout(quietTimer);
+              quietTimer = setTimeout(() => {
+                cliReady = true;
+                unsubCli?.dispose();
+                this.pty?.write(prompt + "\r");
+              }, 1500);
+            });
+            // Safety timeout: send after 12s regardless
+            setTimeout(() => {
+              if (!cliReady) {
+                cliReady = true;
+                if (quietTimer) clearTimeout(quietTimer);
+                this.pty?.write(prompt + "\r");
+              }
+            }, 12000);
+          }, 300);
+        }
+      });
+
+      // Safety timeout: if shell never shows a prompt in 10s, give up
+      setTimeout(() => { if (!launched) unsub?.dispose(); }, 10000);
     } catch { /* non-fatal */ }
   }
 
