@@ -75,8 +75,8 @@ export default class BrainTerminalPlugin extends Plugin {
     this.openNoteWatcher = setInterval(() => this.checkOpenNote(), 250);
 
     this.app.workspace.onLayoutReady(async () => {
-      const ready = await this.checkPrerequisites();
-      if (!ready) return;
+      await this.maybeInstallNodePty(dir);
+      await this.checkPrerequisites();
       await this.maybeScaffoldStarterPack();
       await this.maybeInstallCompanionPlugins();
       // BMAD install is handled by the AI agent on first terminal session
@@ -448,6 +448,100 @@ export default class BrainTerminalPlugin extends Plugin {
         }
       })
     );
+  }
+
+  // ─── node-pty bootstrap ──────────────────────────────────────────────────────
+
+  /**
+   * Download node-pty.zip from the GitHub release and extract it into the
+   * plugin directory if node-pty isn't already present.
+   */
+  private async maybeInstallNodePty(pluginDir: string): Promise<void> {
+    const path   = require("path");
+    const fs     = require("fs");
+    const ptyDir = path.join(pluginDir, "node_modules", "node-pty");
+    const ptyLib = path.join(ptyDir, "lib", "index.js");
+
+    if (fs.existsSync(ptyLib)) {
+      btLog("node-pty already present — skipping install");
+      return;
+    }
+
+    btLog("node-pty missing — downloading from release…");
+    new (require("obsidian").Notice)(
+      "Brain Terminal: downloading terminal engine (node-pty)… one moment.",
+      8000
+    );
+
+    try {
+      const zipUrl = `https://github.com/abhijeetgarg00/obsidian-brain-terminal/releases/download/${this.manifest.version}/node-pty.zip`;
+      const zipPath = path.join(pluginDir, "node-pty.zip");
+
+      // Download
+      await this.downloadFile(zipUrl, zipPath);
+      btLog("downloaded node-pty.zip");
+
+      // Extract
+      fs.mkdirSync(ptyDir, { recursive: true });
+      await this.extractZip(zipPath, ptyDir);
+      fs.unlinkSync(zipPath);
+
+      btLog("node-pty installed successfully");
+      new (require("obsidian").Notice)(
+        "Brain Terminal: terminal engine ready.",
+        4000
+      );
+    } catch (e: any) {
+      btLog("node-pty install failed:", e.message);
+      new (require("obsidian").Notice)(
+        "Brain Terminal: failed to download terminal engine. Check your internet connection and reload Obsidian.",
+        10000
+      );
+    }
+  }
+
+  private downloadFile(url: string, dest: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const https  = require("https");
+      const http   = require("http");
+      const fs     = require("fs");
+      const module = url.startsWith("https") ? https : http;
+
+      const follow = (u: string) => {
+        module.get(u, (res: any) => {
+          if (res.statusCode === 301 || res.statusCode === 302) {
+            return follow(res.headers.location);
+          }
+          if (res.statusCode !== 200) {
+            return reject(new Error(`HTTP ${res.statusCode} for ${u}`));
+          }
+          const out = fs.createWriteStream(dest);
+          res.pipe(out);
+          out.on("finish", () => out.close(resolve));
+          out.on("error", reject);
+        }).on("error", reject);
+      };
+
+      follow(url);
+    });
+  }
+
+  private extractZip(zipPath: string, destDir: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const { execFile } = require("child_process");
+      const isWin = process.platform === "win32";
+
+      if (isWin) {
+        // Use PowerShell Expand-Archive (available on all modern Windows)
+        execFile("powershell", [
+          "-NoProfile", "-NonInteractive", "-Command",
+          `Expand-Archive -Path '${zipPath}' -DestinationPath '${destDir}' -Force`,
+        ], { timeout: 30000 }, (err: any) => err ? reject(err) : resolve());
+      } else {
+        execFile("unzip", ["-o", zipPath, "-d", destDir],
+          { timeout: 30000 }, (err: any) => err ? reject(err) : resolve());
+      }
+    });
   }
 
   // ─── First run detection ─────────────────────────────────────────────────────
