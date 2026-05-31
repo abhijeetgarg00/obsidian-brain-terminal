@@ -192,9 +192,9 @@ export class TerminalView extends ItemView {
       w(`${c.cyan}║${c.reset}         ${c.dim}Built by Abhijeet Garg${c.reset}                  ${c.cyan}║${c.reset}`);
       w(`${c.cyan}╚═══════════════════════════════════════════════════╝${c.reset}`);
       w(``);
-      w(`${c.green}✓${c.reset} ${c.white}Vault scaffolded${c.reset}  ${c.gray}— folders, templates, profiles${c.reset}`);
-      w(`${c.green}✓${c.reset} ${c.white}Companion plugins${c.reset} ${c.gray}— Templater, NL Dates, Update time${c.reset}`);
-      w(`${c.yellow}▸${c.reset} ${c.white}BMAD + vault scan${c.reset} ${c.gray}— will run automatically on first AI session${c.reset}`);
+      w(`${c.cyan}▸${c.reset} ${c.white}Vault setup${c.reset}       ${c.gray}— folders, templates, profiles (running in background)${c.reset}`);
+      w(`${c.cyan}▸${c.reset} ${c.white}Companion plugins${c.reset} ${c.gray}— Templater, NL Dates, Update time (running in background)${c.reset}`);
+      w(`${c.cyan}▸${c.reset} ${c.white}BMAD + vault scan${c.reset} ${c.gray}— runs on first AI session${c.reset}`);
       w(``);
       w(`${c.bold}What to do next:${c.reset}`);
       w(`  ${c.cyan}1.${c.reset} Type ${c.bold}claude${c.reset} or ${c.bold}devin${c.reset} to start your AI`);

@@ -674,11 +674,15 @@ export default class BrainTerminalPlugin extends Plugin {
       ({ STARTER_PACK, STARTER_PACK_VERSION } = await import("./starter-pack"));
     } catch { btLog("starter pack not bundled — skipping"); return; }
 
-    const installedVersion = force ? "0" : (data.starterPackVersion ?? "0");
-
     // ── Detect existing vault structure ──────────────────────────────────────
     const vaultState = await this.detectVaultState();
     btLog("vault state:", vaultState);
+
+    // If vault is empty, always re-run setup regardless of saved version
+    // This handles the case where a previous install failed mid-way
+    const installedVersion = (force || vaultState === "empty")
+      ? "0"
+      : (data.starterPackVersion ?? "0");
 
     // ── First install ─────────────────────────────────────────────────────────
     if (installedVersion === "0") {
@@ -727,28 +731,28 @@ export default class BrainTerminalPlugin extends Plugin {
 
   /** Checks how organized the vault is. Returns "good" | "partial" | "empty" */
   private async detectVaultState(): Promise<"good" | "partial" | "empty"> {
+    // Score based on USER content — not plugin files (AGENT.md doesn't count)
     const checks = [
-      { path: "_templates", weight: 2 },   // templates folder = strong signal
-      { path: "project",    weight: 2 },   // project folder = strong signal
+      { path: "_templates", weight: 2 },   // templates folder
+      { path: "project",    weight: 2 },   // project folder
       { path: "skills",     weight: 1 },
       { path: "ideas",      weight: 1 },
       { path: "learning",   weight: 1 },
-      { path: "CLAUDE.md",           weight: 1 },
-      { path: ".brain/AGENT.md",     weight: 2 },
+      { path: "training",   weight: 1 },
     ];
     let score = 0;
     for (const c of checks) {
       if (await this.app.vault.adapter.exists(normalizePath(c.path))) score += c.weight;
     }
-    // Also check if _templates has actual .md files in it
-    let templateCount = 0;
+    // Templates folder with actual notes = strong signal of organized vault
     if (await this.app.vault.adapter.exists(normalizePath("_templates"))) {
       const listed = await this.app.vault.adapter.list(normalizePath("_templates"));
-      templateCount = (listed.files ?? []).filter((f: string) => f.endsWith(".md")).length;
-      if (templateCount >= 3) score += 2;
+      const count = (listed.files ?? []).filter((f: string) => f.endsWith(".md")).length;
+      if (count >= 5) score += 3;       // lots of templates — well organized
+      else if (count >= 1) score += 1;
     }
-    if (score >= 6) return "good";     // well organized — skip setup
-    if (score >= 2) return "partial";  // some structure — create missing pieces
+    if (score >= 6) return "good";     // well organized vault — skip setup
+    if (score >= 2) return "partial";  // some structure — fill in gaps
     return "empty";                    // blank vault — create everything
   }
 
@@ -924,12 +928,19 @@ This vault is powered by **Brain Terminal** — an AI terminal inside Obsidian.
 
   private async maybeInstallCompanionPlugins(force = false): Promise<void> {
     const data = (await this.loadData()) ?? {};
-    if (!force && data.companionPluginsInstalled) return;
 
+    // Always verify plugins are actually on disk — don't just trust the flag
     const plugins = (this.app as any).plugins;
     if (!plugins) return;
 
-    const missing = this.COMPANION_PLUGINS.filter(p => !plugins.manifests[p.id]);
+    const missing = this.COMPANION_PLUGINS.filter(p => {
+      // Missing if not in manifests OR plugin dir has no main.js
+      if (plugins.manifests[p.id]) return false;
+      const pluginDir = normalizePath(`.obsidian/plugins/${p.id}`);
+      return true; // not in manifests = needs install
+    });
+
+    if (!force && data.companionPluginsInstalled && missing.length === 0) return;
     if (!missing.length) {
       await this.saveData({ ...data, companionPluginsInstalled: true });
       return;
