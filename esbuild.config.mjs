@@ -49,6 +49,12 @@ function copyStyles() {
 
 if (prod) {
   await ctx.rebuild();
+  // Also copy to local dev vault so it stays in sync
+  try {
+    fs.copyFileSync("main.js", `${PLUGIN_DIR}/main.js`);
+    copyStyles();
+    console.log("[esbuild] copied main.js + styles.css → vault");
+  } catch { /* vault not present on CI */ }
   process.exit(0);
 } else {
   copyStyles();
