@@ -12,7 +12,7 @@ See `.brain/vault-structure.md` for full tree.
 
 Ideas live in:
 - `ideas/` — raw idea notes and brainstorm dumps
-- `ideas/<topic>/` — developed idea clusters (e.g. `ideas/mealPlan/`)
+- `ideas/<topic>/` — developed idea clusters (e.g. `ideas/my-topic/`)
 - `project/<name>/` — brainstorms tied to a specific project
 - Any note can get a `## Brainstorm` section added in-place
 

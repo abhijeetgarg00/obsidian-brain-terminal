@@ -23,7 +23,7 @@ Update your context every time you start a new task.
 ```
 Write `path/to/note.md:lineNumber` to this file.
 Obsidian will instantly open that note and scroll to the line.
-Example: `project/brain-terminal/Brain Terminal.md:42`
+Example: `project/my-project/My Note.md:42`
 
 ### Live diff highlighting
 When you edit any `.md` file in this vault:

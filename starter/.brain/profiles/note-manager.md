@@ -29,7 +29,7 @@ See `.brain/note-format.md` for full details.
 - Frontmatter: always include `tags` + type-specific fields
 - Internal links: always `[[wikilinks]]`, never markdown links
 - Filenames: Title Case with spaces (`My Note.md`)
-- Project folders: kebab-case (`brain-terminal/`)
+- Project folders: kebab-case (`my-project/`)
 - Strip `<%* %>` Templater blocks when writing — those run inside Obsidian only
 
 ---

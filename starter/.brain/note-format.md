@@ -1,6 +1,6 @@
 # Note Format
 
-> This vault's actual conventions — seeded 2026-05-31, refined by AGENT.md on first run.
+> Placeholder conventions — AGENT.md will update this with your actual frontmatter fields and patterns on first run.
 
 ---
 
@@ -23,9 +23,8 @@ deadline: ""
 ---
 tags:
   - "#skill"
-person: Abhijeet
 skill: ""
-area: coding|biology|music|sports|other
+area: ""
 current-level: beginner|intermediate|advanced|expert
 goal-level: beginner|intermediate|advanced|expert
 category: ""
@@ -166,8 +165,8 @@ Key insights and takeaways.
 
 ## Naming Rules
 
-- Note filenames use **Title Case with spaces**: `Brain Terminal.md`
-- Project folders use **kebab-case**: `brain-terminal/`
+- Note filenames use **Title Case with spaces**: `My Note.md`
+- Project folders use **kebab-case**: `my-project/`
 - Skill notes: just the skill name: `Python.md`, `Machine Learning.md`
 - Never use underscores in note filenames (only in template filenames)
 - Images go in `images/` or `<note-folder>/attachments/`
