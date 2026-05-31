@@ -1,0 +1,34 @@
+/* Brain Terminal — plugin styles */
+
+.brain-terminal-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.brain-terminal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: var(--background-secondary);
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+}
+
+.brain-terminal-xterm {
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Live diff decorations */
+.brain-diff-added {
+  background-color: rgba(0, 200, 80, 0.18);
+}
+
+.brain-diff-removed-line {
+  color: rgba(255, 80, 80, 0.7);
+  font-style: italic;
+  pointer-events: none;
+  user-select: none;
+}

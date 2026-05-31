@@ -1,0 +1,26 @@
+{
+  "name": "obsidian-brain-terminal",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "npm run bundle-starter && node esbuild.config.mjs production",
+    "bundle-starter": "node scripts/bundle-starter.mjs",
+    "postinstall": "node scripts/patch-node-pty.mjs",
+    "install:pty": "node scripts/install-pty.mjs",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@xterm/xterm": "^5.5.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "node-pty": "^1.1.0"
+  },
+  "devDependencies": {
+    "obsidian": "latest",
+    "typescript": "latest",
+    "tslib": "latest",
+    "@types/node": "^20",
+    "esbuild": "latest",
+    "vitest": "latest"
+  }
+}

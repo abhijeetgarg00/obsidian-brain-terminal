@@ -1,0 +1,10 @@
+{
+  "id": "obsidian-brain-terminal",
+  "name": "Brain Terminal",
+  "version": "0.1.0",
+  "minAppVersion": "1.4.0",
+  "description": "Terminal panel for Obsidian. Runs a shell + AI CLI right inside your vault.",
+  "author": "Abhijeet Garg",
+  "authorUrl": "https://github.com/abhijeetgarg00",
+  "isDesktopOnly": true
+}
