@@ -28,11 +28,26 @@ export class BrainTerminalSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("Preferred AI CLI")
+      .setDesc("Which AI to auto-launch and send the first-run setup prompt to. Brain Terminal will type this command for you on first open.")
+      .addDropdown(drop =>
+        drop
+          .addOption("none", "None — I'll type it myself")
+          .addOption("devin", "Devin")
+          .addOption("claude", "Claude Code")
+          .setValue(this.plugin.settings.preferredCli)
+          .onChange(async v => {
+            this.plugin.settings.preferredCli = v as "devin" | "claude" | "none";
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
       .setName("Startup command")
-      .setDesc("Command to run automatically when a terminal opens (e.g. claude, devin, windsurf). Leave blank for a plain shell.")
+      .setDesc("Extra command to run in every new terminal after the shell opens (e.g. cd ~/projects). Leave blank for none.")
       .addText(text =>
         text
-          .setPlaceholder("e.g. claude")
+          .setPlaceholder("e.g. cd ~/projects")
           .setValue(this.plugin.settings.startupCommand)
           .onChange(async v => {
             this.plugin.settings.startupCommand = v.trim();

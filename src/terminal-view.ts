@@ -196,10 +196,15 @@ export class TerminalView extends ItemView {
       w(`${c.cyan}▸${c.reset} ${c.white}Companion plugins${c.reset} ${c.gray}— Templater, NL Dates, Update time (running in background)${c.reset}`);
       w(`${c.cyan}▸${c.reset} ${c.white}BMAD + vault scan${c.reset} ${c.gray}— runs on first AI session${c.reset}`);
       w(``);
-      w(`${c.bold}What to do next:${c.reset}`);
-      w(`  ${c.cyan}1.${c.reset} Type ${c.bold}claude${c.reset} or ${c.bold}devin${c.reset} to start your AI`);
-      w(`  ${c.cyan}2.${c.reset} The AI will install BMAD and scan your vault automatically`);
-      w(`  ${c.cyan}3.${c.reset} After that, just talk to your AI naturally`);
+      if (this.settings.preferredCli !== "none") {
+        w(`${c.bold}${c.green}▸ Auto-launching ${this.settings.preferredCli} and sending first-run prompt…${c.reset}`);
+        w(`  ${c.gray}(set Preferred AI CLI in settings to change this)${c.reset}`);
+      } else {
+        w(`${c.bold}What to do next:${c.reset}`);
+        w(`  ${c.cyan}1.${c.reset} Type ${c.bold}claude${c.reset} or ${c.bold}devin${c.reset} to start your AI`);
+        w(`  ${c.cyan}2.${c.reset} The AI will install BMAD and scan your vault automatically`);
+        w(`  ${c.cyan}3.${c.reset} After that, just talk to your AI naturally`);
+      }
       w(``);
       w(`${c.gray}─────────────────────────────────────────────────────${c.reset}`);
       w(``);
@@ -281,6 +286,35 @@ export class TerminalView extends ItemView {
     if (this.settings.startupCommand) {
       setTimeout(() => this.pty?.write(this.settings.startupCommand + "\r"), 500);
     }
+
+    // Auto-launch preferred CLI + first-run prompt if vault AGENT.md has first_run: true
+    if (this.settings.preferredCli !== "none") {
+      this.maybeAutoLaunchCli();
+    }
+  }
+
+  private maybeAutoLaunchCli(): void {
+    try {
+      const fs   = require("fs");
+      const path = require("path");
+      const vaultRoot = (this.app.vault.adapter as any).basePath ?? "";
+      const agentPath = path.join(vaultRoot, "AGENT.md");
+      if (!fs.existsSync(agentPath)) return;
+      const content = fs.readFileSync(agentPath, "utf8");
+      if (!content.includes("first_run: true")) return;
+
+      const cli = this.settings.preferredCli; // "devin" | "claude"
+      const prompt = "Read AGENT.md now. It says first_run: true — run the First Run Sequence immediately, starting with Step 0. Do not wait for further input.";
+
+      // Wait for shell to settle, then type CLI command + Enter, then after CLI loads send the prompt
+      setTimeout(() => {
+        this.pty?.write(cli + "\r");
+        // Give the CLI ~4s to start up, then send the first-run prompt
+        setTimeout(() => {
+          this.pty?.write(prompt + "\r");
+        }, 4000);
+      }, 1500);
+    } catch { /* non-fatal */ }
   }
 
   private async restartPty(): Promise<void> {

@@ -6,6 +6,7 @@ export interface BrainTerminalSettings {
   shellPath: string;
   shellArgs: string[];
   startupCommand: string;
+  preferredCli: "devin" | "claude" | "none";
   fontFamily: string;
   fontSize: number;
   scrollback: number;
@@ -16,7 +17,8 @@ export interface BrainTerminalSettings {
 export const DEFAULT_SETTINGS: BrainTerminalSettings = {
   shellPath: "",
   shellArgs: [],
-  startupCommand: "devin",
+  startupCommand: "",
+  preferredCli: "none",
   fontFamily: "Cascadia Code, Consolas, Courier New, monospace",
   fontSize: 14,
   scrollback: 5000,
