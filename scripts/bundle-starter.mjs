@@ -28,7 +28,8 @@ function updateStrategy(relPath) {
   if (p === "AGENT.md")                          return "bridge";  // vault root — Devin reads this
   if (p === ".brain/AGENT.md")                   return "bridge";
   if (p === ".agents/AGENT.md")                  return "bridge";
-  if (p === ".devin/config.json")                return "bridge";  // SessionStart hook
+  if (p === ".devin/config.json")                return "bridge";  // Devin SessionStart hook
+  if (p === ".claude/settings.json")             return "bridge";  // Claude Code SessionStart hook
 
   // Profiles — append new sections on update, never overwrite existing content
   if (p.startsWith(".brain/profiles/"))          return "append";

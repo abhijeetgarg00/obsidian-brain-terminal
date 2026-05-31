@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const fs=require('fs'); try{ const c=fs.readFileSync('AGENT.md','utf8'); if(c.includes('first_run: true')){ console.log('BRAIN TERMINAL FIRST RUN REQUIRED\\\\n\\\\nRead AGENT.md — frontmatter shows first_run: true. Run the First Run Sequence now, BEFORE anything else. Start with Step 0 (install BMAD) and complete all 6 steps without waiting for user input.'); }}catch(e){}\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

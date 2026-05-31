@@ -31,6 +31,11 @@ export const STARTER_PACK: { path: string; content: string; updateStrategy: stri
     "updateStrategy": "never"
   },
   {
+    "path": ".claude/settings.json",
+    "content": "{\r\n  \"hooks\": {\r\n    \"SessionStart\": [\r\n      {\r\n        \"matcher\": \"startup\",\r\n        \"hooks\": [\r\n          {\r\n            \"type\": \"command\",\r\n            \"command\": \"node -e \\\"const fs=require('fs'); try{ const c=fs.readFileSync('AGENT.md','utf8'); if(c.includes('first_run: true')){ console.log('BRAIN TERMINAL FIRST RUN REQUIRED\\\\\\\\n\\\\\\\\nRead AGENT.md — frontmatter shows first_run: true. Run the First Run Sequence now, BEFORE anything else. Start with Step 0 (install BMAD) and complete all 6 steps without waiting for user input.'); }}catch(e){}\\\"\",\r\n            \"timeout\": 5\r\n          }\r\n        ]\r\n      }\r\n    ]\r\n  }\r\n}\r\n",
+    "updateStrategy": "bridge"
+  },
+  {
     "path": ".devin/config.json",
     "content": "{\r\n  \"hooks\": {\r\n    \"SessionStart\": [\r\n      {\r\n        \"matcher\": \"\",\r\n        \"hooks\": [\r\n          {\r\n            \"type\": \"command\",\r\n            \"command\": \"node -e \\\"const fs=require('fs'),p='AGENT.md'; try{const c=fs.readFileSync(p,'utf8'); if(c.includes('first_run: true')){console.log(JSON.stringify({add_context:'BRAIN TERMINAL FIRST RUN REQUIRED\\\\n\\\\nRead AGENT.md. The frontmatter shows first_run: true. You MUST run the First Run Sequence now before doing anything else. Start with Step 0 (check for BMAD) and work through all 6 steps. Do not wait for user input - begin immediately.'}))}}catch(e){}\\\"\",\r\n            \"timeout\": 5\r\n          }\r\n        ]\r\n      }\r\n    ]\r\n  }\r\n}\r\n",
     "updateStrategy": "bridge"
