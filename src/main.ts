@@ -957,7 +957,7 @@ This vault is powered by **Brain Terminal** — an AI terminal inside Obsidian.
     {
       id:   "update-time-on-edit",
       name: "Update time on edit",
-      repo: "beaussan/update-time-on-edit",
+      repo: "beaussan/update-time-on-edit-obsidian",
     },
     {
       id:   "nldates-obsidian",
