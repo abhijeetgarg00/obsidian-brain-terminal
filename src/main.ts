@@ -1025,6 +1025,9 @@ This vault is powered by **Brain Terminal** — an AI terminal inside Obsidian.
           await adapter.write(normalizePath(`${pluginDir}/styles.css`), styles);
         } catch { /* styles optional */ }
 
+        // Refresh Obsidian's manifest cache so it knows the plugin exists
+        if (typeof plugins.loadManifests === "function") await plugins.loadManifests();
+
         await plugins.loadPlugin(plugin.id);
         await plugins.enablePlugin(plugin.id);
 
@@ -1036,11 +1039,26 @@ This vault is powered by **Brain Terminal** — an AI terminal inside Obsidian.
 
     await this.saveData({ ...data, companionPluginsInstalled: true });
 
+    const { Notice, Modal, Setting } = require("obsidian");
     const installedNames = missing.map(p => p.name).join(", ");
-    new (require("obsidian").Notice)(
-      `Brain Terminal: installed companion plugins — ${installedNames}`,
-      8000
-    );
+
+    // Show a reload prompt — newly enabled plugins often need it
+    class ReloadModal extends Modal {
+      constructor(app: any) { super(app); }
+      onOpen() {
+        this.titleEl.setText("Companion plugins installed");
+        this.contentEl.createEl("p", {
+          text: `Installed and enabled: ${installedNames}. Reload Obsidian now so they fully activate?`
+        });
+        new Setting(this.contentEl)
+          .addButton(btn => btn.setButtonText("Reload now").setCta().onClick(() => {
+            this.close();
+            (this.app as any).commands.executeCommandById("app:reload");
+          }))
+          .addButton(btn => btn.setButtonText("Later").onClick(() => this.close()));
+      }
+    }
+    new ReloadModal(this.app).open();
   }
 
   // ─── BMAD install (manual, from settings page) ───────────────────────────────
