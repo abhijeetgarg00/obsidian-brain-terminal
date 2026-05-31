@@ -38,10 +38,19 @@ Check if `.claude/skills/` exists and has folders inside it.
 
 **If missing** → run this exact command:
 ```
-npx bmad-method install --directory "<vault-root>" --tools claude-code,windsurf --yes
+npx bmad-method install --directory "<vault-root>" --modules bmm,bmb,tea --tools claude-code,windsurf --yes
 ```
 Replace `<vault-root>` with the absolute path to this vault.
 You can find the vault root by reading `.brain/vault-structure.md` or checking the path of this file.
+
+Modules included:
+- `core` — always included automatically (PM, Architect, Dev, Analyst, UX, QA agents)
+- `bmm` — Build More Method (planning, PRDs, epics, stories, sprints)
+- `bmb` — BMAD Builder (create custom agents and workflows)
+- `tea` — Test Engineering Assistant (test plans, Playwright, coverage, CI)
+
+Intentionally excluded:
+- `cis` — Creative Image Suite (image generation, not needed)
 
 - If it succeeds → continue to Step 1
 - If you get `EBUSY` errors → wait 5 seconds and retry up to 3 times
