@@ -447,8 +447,7 @@ export default class BrainTerminalPlugin extends Plugin {
 
   private async checkPrerequisites(): Promise<boolean> {
     const data = (await this.loadData()) ?? {};
-    // Only show once — if user dismissed, don't nag again
-    if (data.prerequisitesOk) return true;
+    if (data.prerequisitesChecked) return true;
 
     const { execFile } = require("child_process");
     const isWin = process.platform === "win32";
@@ -460,106 +459,90 @@ export default class BrainTerminalPlugin extends Plugin {
         });
       });
 
-    // ── Check Node / npx ─────────────────────────────────────────────────────
+    // Check Node/npx — needed only for BMAD auto-install
     const nodeVersion = await check(isWin ? "node.exe" : "node", ["--version"]);
     const npxVersion  = await check(isWin ? "npx.cmd"  : "npx",  ["--version"]);
 
-    // ── Check shell (PowerShell 7 on Windows, bash on mac/linux) ─────────────
-    let shellOk = true;
-    let shellVersion = "";
+    // Check PowerShell 7 — needed only for terminal on Windows
+    let pwshOk = true;
     if (isWin) {
-      const v = await check("pwsh.exe", ["--version"]);
-      shellOk     = v !== null;
-      shellVersion = v ?? "";
-    } else {
-      // bash / zsh always available on mac/linux
-      shellVersion = "bash/zsh";
+      pwshOk = (await check("pwsh.exe", ["--version"])) !== null;
     }
 
-    const missing: string[] = [];
-    const instructions: string[] = [];
+    btLog("prereq check — node:", nodeVersion, "npx:", npxVersion, "pwsh:", pwshOk);
+
+    const warnings: { title: string; detail: string; affects: string }[] = [];
 
     if (!nodeVersion || !npxVersion) {
-      missing.push("Node.js + npx");
-      instructions.push(
-        isWin
-          ? "Install Node.js from https://nodejs.org  (LTS version)"
-          : "Run: brew install node  OR  https://nodejs.org"
-      );
+      warnings.push({
+        title:   "Node.js is not installed",
+        detail:  isWin
+          ? "https://nodejs.org  (download LTS)"
+          : "brew install node  OR  https://nodejs.org",
+        affects: "BMAD agent suite will not auto-install. Everything else works fine.",
+      });
     }
 
-    if (isWin && !shellOk) {
-      missing.push("PowerShell 7 (pwsh)");
-      instructions.push(
-        "Install from: https://aka.ms/powershell  OR  winget install Microsoft.PowerShell"
-      );
+    if (isWin && !pwshOk) {
+      warnings.push({
+        title:   "PowerShell 7 (pwsh) is not installed",
+        detail:  "winget install Microsoft.PowerShell  OR  https://aka.ms/powershell",
+        affects: "The terminal will fall back to cmd.exe. All other features work fine.",
+      });
     }
 
-    if (missing.length === 0) {
-      // All good — save and never check again
-      btLog("prerequisites OK — node:", nodeVersion, "npx:", npxVersion, "shell:", shellVersion);
-      await this.saveData({ ...data, prerequisitesOk: true });
-      return true;
+    await this.saveData({ ...data, prerequisitesChecked: true });
+
+    if (warnings.length > 0) {
+      this.showPrerequisitesModal(warnings);
     }
 
-    // ── Show modal with clear instructions ───────────────────────────────────
-    btLog("prerequisites missing:", missing.join(", "));
-    this.showPrerequisitesModal(missing, instructions);
-    return false;
+    // Always return true — warnings are informational, not blocking
+    return true;
   }
 
-  private showPrerequisitesModal(missing: string[], instructions: string[]): void {
+  private showPrerequisitesModal(warnings: { title: string; detail: string; affects: string }[]): void {
     const { Modal } = require("obsidian");
 
     class PrereqModal extends Modal {
-      private missing: string[];
-      private instructions: string[];
-      constructor(app: any, missing: string[], instructions: string[]) {
+      private warnings: { title: string; detail: string; affects: string }[];
+      constructor(app: any, warnings: any[]) {
         super(app);
-        this.missing   = missing;
-        this.instructions = instructions;
+        this.warnings = warnings;
       }
       onOpen() {
         const { contentEl } = this;
         contentEl.empty();
 
-        // Title
-        contentEl.createEl("h2", { text: "Brain Terminal — Setup Required" });
+        contentEl.createEl("h2", { text: "Brain Terminal is installed and working!" });
 
-        // Intro
         contentEl.createEl("p", {
-          text: "Brain Terminal needs a couple of things installed before it can set up your vault. This is a one-time setup.",
+          text: "The terminal and all core features are ready. A couple of optional tools are missing that unlock extra features:",
         });
 
-        // Missing items
-        contentEl.createEl("h3", { text: "Please install:" });
-        const list = contentEl.createEl("ul");
-        this.missing.forEach((item, i) => {
-          const li = list.createEl("li");
-          li.createEl("strong", { text: item });
-          li.createEl("br");
-          li.createEl("code", { text: this.instructions[i] });
+        this.warnings.forEach(w => {
+          const box = contentEl.createEl("div");
+          box.style.cssText = "border:1px solid var(--background-modifier-border);border-radius:6px;padding:12px;margin:12px 0";
+
+          box.createEl("strong", { text: "⚠ " + w.title });
+          box.createEl("br");
+          box.createEl("code",   { text: w.detail });
+          box.createEl("p",      { text: "Impact: " + w.affects }).style.cssText =
+            "margin:8px 0 0;font-size:0.85em;color:var(--text-muted)";
         });
 
-        // After installing
-        contentEl.createEl("h3", { text: "After installing:" });
         contentEl.createEl("p", {
-          text: "Restart Obsidian and Brain Terminal will automatically complete setup.",
-        });
+          text: "Install any missing tools and restart Obsidian to activate those features.",
+        }).style.marginTop = "12px";
 
-        // Dismiss button
-        const btn = contentEl.createEl("button", { text: "Got it — I'll install these" });
-        btn.style.marginTop = "16px";
-        btn.style.padding   = "8px 16px";
-        btn.style.cursor    = "pointer";
+        const btn = contentEl.createEl("button", { text: "OK — continue" });
+        btn.style.cssText = "margin-top:12px;padding:8px 20px;cursor:pointer";
         btn.addEventListener("click", () => this.close());
       }
-      onClose() {
-        this.contentEl.empty();
-      }
+      onClose() { this.contentEl.empty(); }
     }
 
-    new PrereqModal(this.app, missing, instructions).open();
+    new PrereqModal(this.app, warnings).open();
   }
 
   // ─── Starter pack ────────────────────────────────────────────────────────────
