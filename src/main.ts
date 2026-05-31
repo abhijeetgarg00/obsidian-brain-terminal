@@ -851,6 +851,7 @@ This vault is powered by **Brain Terminal** — an AI terminal inside Obsidian.
   private async copyBridgeFiles(pack: any[]): Promise<void> {
     const bridgePaths = [
       "CLAUDE.md",
+      "AGENT.md",             // vault root — Devin reads this
       ".brain/AGENT.md",
       ".brain/vault-structure.md",
       ".brain/note-format.md",
