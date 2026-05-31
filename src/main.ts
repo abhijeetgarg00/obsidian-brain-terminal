@@ -69,6 +69,8 @@ export default class BrainTerminalPlugin extends Plugin {
     this.openNoteWatcher = setInterval(() => this.checkOpenNote(), 250);
 
     this.app.workspace.onLayoutReady(async () => {
+      const ready = await this.checkPrerequisites();
+      if (!ready) return; // prerequisites notice shown — stop here
       await this.maybeScaffoldStarterPack();
       await this.maybeInstallCompanionPlugins();
       await this.maybeInstallBmad();
@@ -439,6 +441,125 @@ export default class BrainTerminalPlugin extends Plugin {
         }
       })
     );
+  }
+
+  // ─── Prerequisites check ─────────────────────────────────────────────────────
+
+  private async checkPrerequisites(): Promise<boolean> {
+    const data = (await this.loadData()) ?? {};
+    // Only show once — if user dismissed, don't nag again
+    if (data.prerequisitesOk) return true;
+
+    const { execFile } = require("child_process");
+    const isWin = process.platform === "win32";
+
+    const check = (cmd: string, args: string[]): Promise<string | null> =>
+      new Promise(resolve => {
+        execFile(cmd, args, { timeout: 5000 }, (err: any, stdout: string) => {
+          resolve(err ? null : stdout.trim());
+        });
+      });
+
+    // ── Check Node / npx ─────────────────────────────────────────────────────
+    const nodeVersion = await check(isWin ? "node.exe" : "node", ["--version"]);
+    const npxVersion  = await check(isWin ? "npx.cmd"  : "npx",  ["--version"]);
+
+    // ── Check shell (PowerShell 7 on Windows, bash on mac/linux) ─────────────
+    let shellOk = true;
+    let shellVersion = "";
+    if (isWin) {
+      const v = await check("pwsh.exe", ["--version"]);
+      shellOk     = v !== null;
+      shellVersion = v ?? "";
+    } else {
+      // bash / zsh always available on mac/linux
+      shellVersion = "bash/zsh";
+    }
+
+    const missing: string[] = [];
+    const instructions: string[] = [];
+
+    if (!nodeVersion || !npxVersion) {
+      missing.push("Node.js + npx");
+      instructions.push(
+        isWin
+          ? "Install Node.js from https://nodejs.org  (LTS version)"
+          : "Run: brew install node  OR  https://nodejs.org"
+      );
+    }
+
+    if (isWin && !shellOk) {
+      missing.push("PowerShell 7 (pwsh)");
+      instructions.push(
+        "Install from: https://aka.ms/powershell  OR  winget install Microsoft.PowerShell"
+      );
+    }
+
+    if (missing.length === 0) {
+      // All good — save and never check again
+      btLog("prerequisites OK — node:", nodeVersion, "npx:", npxVersion, "shell:", shellVersion);
+      await this.saveData({ ...data, prerequisitesOk: true });
+      return true;
+    }
+
+    // ── Show modal with clear instructions ───────────────────────────────────
+    btLog("prerequisites missing:", missing.join(", "));
+    this.showPrerequisitesModal(missing, instructions);
+    return false;
+  }
+
+  private showPrerequisitesModal(missing: string[], instructions: string[]): void {
+    const { Modal } = require("obsidian");
+
+    class PrereqModal extends Modal {
+      private missing: string[];
+      private instructions: string[];
+      constructor(app: any, missing: string[], instructions: string[]) {
+        super(app);
+        this.missing   = missing;
+        this.instructions = instructions;
+      }
+      onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+
+        // Title
+        contentEl.createEl("h2", { text: "Brain Terminal — Setup Required" });
+
+        // Intro
+        contentEl.createEl("p", {
+          text: "Brain Terminal needs a couple of things installed before it can set up your vault. This is a one-time setup.",
+        });
+
+        // Missing items
+        contentEl.createEl("h3", { text: "Please install:" });
+        const list = contentEl.createEl("ul");
+        this.missing.forEach((item, i) => {
+          const li = list.createEl("li");
+          li.createEl("strong", { text: item });
+          li.createEl("br");
+          li.createEl("code", { text: this.instructions[i] });
+        });
+
+        // After installing
+        contentEl.createEl("h3", { text: "After installing:" });
+        contentEl.createEl("p", {
+          text: "Restart Obsidian and Brain Terminal will automatically complete setup.",
+        });
+
+        // Dismiss button
+        const btn = contentEl.createEl("button", { text: "Got it — I'll install these" });
+        btn.style.marginTop = "16px";
+        btn.style.padding   = "8px 16px";
+        btn.style.cursor    = "pointer";
+        btn.addEventListener("click", () => this.close());
+      }
+      onClose() {
+        this.contentEl.empty();
+      }
+    }
+
+    new PrereqModal(this.app, missing, instructions).open();
   }
 
   // ─── Starter pack ────────────────────────────────────────────────────────────
