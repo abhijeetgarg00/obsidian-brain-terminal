@@ -29,7 +29,8 @@ export class TerminalView extends ItemView {
     leaf: WorkspaceLeaf,
     private settings: BrainTerminalSettings,
     private pluginDir: string,
-    private onFirstTerminal?: () => void
+    private onFirstTerminal?: () => void,
+    private isFirstRun = false,
   ) {
     super(leaf);
     this.instanceId = ++TerminalView.instanceCount;
@@ -169,6 +170,47 @@ export class TerminalView extends ItemView {
     this.registerKeyForwarding();
   }
 
+  // ─── Welcome ────────────────────────────────────────────────────────────────
+
+  private printWelcome(): void {
+    const w = (s: string) => this.terminal?.writeln(s);
+    const c = {
+      reset:  "\x1b[0m",
+      bold:   "\x1b[1m",
+      dim:    "\x1b[2m",
+      cyan:   "\x1b[1;36m",
+      green:  "\x1b[1;32m",
+      yellow: "\x1b[1;33m",
+      white:  "\x1b[1;37m",
+      gray:   "\x1b[90m",
+    };
+
+    if (this.isFirstRun) {
+      // ── First ever launch ──────────────────────────────────────────────────
+      w(`${c.cyan}╔═══════════════════════════════════════════════════╗${c.reset}`);
+      w(`${c.cyan}║${c.reset}         ${c.bold}${c.white}Welcome to Brain Terminal${c.reset}               ${c.cyan}║${c.reset}`);
+      w(`${c.cyan}║${c.reset}         ${c.dim}Built by Abhijeet Garg${c.reset}                  ${c.cyan}║${c.reset}`);
+      w(`${c.cyan}╚═══════════════════════════════════════════════════╝${c.reset}`);
+      w(``);
+      w(`${c.green}✓${c.reset} ${c.white}Vault scaffolded${c.reset}  ${c.gray}— folders, templates, profiles${c.reset}`);
+      w(`${c.green}✓${c.reset} ${c.white}Companion plugins${c.reset} ${c.gray}— Templater, NL Dates, Update time${c.reset}`);
+      w(`${c.yellow}▸${c.reset} ${c.white}BMAD + vault scan${c.reset} ${c.gray}— will run automatically on first AI session${c.reset}`);
+      w(``);
+      w(`${c.bold}What to do next:${c.reset}`);
+      w(`  ${c.cyan}1.${c.reset} Type ${c.bold}claude${c.reset} or ${c.bold}devin${c.reset} to start your AI`);
+      w(`  ${c.cyan}2.${c.reset} The AI will install BMAD and scan your vault automatically`);
+      w(`  ${c.cyan}3.${c.reset} After that, just talk to your AI naturally`);
+      w(``);
+      w(`${c.gray}─────────────────────────────────────────────────────${c.reset}`);
+      w(``);
+    } else {
+      // ── Returning session ──────────────────────────────────────────────────
+      w(`${c.cyan}${c.bold}${this.terminalName}${c.reset} ${c.dim}— Built by Abhijeet Garg${c.reset}`);
+      w(`${c.dim}Type a command or let your AI take the wheel.${c.reset}`);
+      w(``);
+    }
+  }
+
   // ─── Shell / PTY ────────────────────────────────────────────────────────────
 
   private resolveShell(): { shell: string; args: string[] } {
@@ -223,8 +265,7 @@ export class TerminalView extends ItemView {
     }) as IPty;
 
     // Welcome message
-    this.terminal?.writeln(`\x1b[1;36m${this.terminalName}\x1b[0m \x1b[2m— Built by Abhijeet Garg\x1b[0m`);
-    this.terminal?.writeln(`\x1b[2mType a command or let your AI CLI take the wheel.\x1b[0m\r\n`);
+    this.printWelcome();
 
     this.pty.onData(data => this.terminal?.write(data));
     this.terminal?.onData(data => this.pty?.write(data));

@@ -32,6 +32,8 @@ export default class BrainTerminalPlugin extends Plugin {
 
   async onload(): Promise<void> {
     await this.loadSettings();
+    // Cache plugin data so isPluginFirstRun() can read it synchronously
+    (this as any)._loadedData = (await this.loadData()) ?? {};
 
     this.vaultRoot = (this.app.vault.adapter as any).basePath ?? "";
     const dir = this.vaultRoot
@@ -40,7 +42,11 @@ export default class BrainTerminalPlugin extends Plugin {
     this.contextFile  = require("path").join(dir, ".context");
     this.openNoteFile = require("path").join(dir, ".open-note");
 
-    this.registerView(VIEW_TYPE_TERMINAL, leaf => new TerminalView(leaf, this.settings, dir, () => this.onFirstTerminal()));
+    this.registerView(VIEW_TYPE_TERMINAL, leaf => new TerminalView(
+      leaf, this.settings, dir,
+      () => this.onFirstTerminal(),
+      this.isPluginFirstRun(),
+    ));
 
     this.addRibbonIcon("brain", "Brain Terminal", () => this.createNewTerminal());
     this.addCommand({ id: "toggle-terminal", name: "Brain: Toggle Terminal", callback: () => this.toggleTerminal() });
@@ -442,6 +448,25 @@ export default class BrainTerminalPlugin extends Plugin {
         }
       })
     );
+  }
+
+  // ─── First run detection ─────────────────────────────────────────────────────
+
+  /** True only until the first terminal has been opened and the user has seen the welcome screen */
+  private _shownFirstRunWelcome = false;
+
+  private isPluginFirstRun(): boolean {
+    // Show first-run welcome only on the very first terminal open ever
+    // After that always return false
+    if (this._shownFirstRunWelcome) return false;
+    const data = (this as any)._loadedData ?? {};
+    const isFirst = !data.starterPackVersion || !data.seenWelcome;
+    if (isFirst) {
+      this._shownFirstRunWelcome = true;
+      // Mark welcome as seen so next terminal in same session shows normal message
+      this.loadData().then(d => this.saveData({ ...(d ?? {}), seenWelcome: true }));
+    }
+    return isFirst;
   }
 
   // ─── Prerequisites check ─────────────────────────────────────────────────────
