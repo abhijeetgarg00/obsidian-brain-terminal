@@ -877,6 +877,7 @@ This vault is powered by **Brain Terminal** — an AI terminal inside Obsidian.
       ".brain/profiles/note-manager.md",
       ".brain/profiles/brainstormer.md",
       ".agents/AGENT.md",
+      ".devin/config.json",
     ];
     await this.ensureStarterPackDirs(pack);
     for (const { path: p, content } of pack) {

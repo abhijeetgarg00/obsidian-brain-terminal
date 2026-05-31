@@ -23,11 +23,12 @@ function updateStrategy(relPath) {
   // vault-structure.md — user's real vault map, NEVER touch after install
   if (p.includes("vault-structure.md"))          return "never";
 
-  // AGENT.md files — bridge files, copy once, version-bump on update
+  // AGENT.md files + Devin config — bridge files, copy once
   if (p === "CLAUDE.md")                         return "bridge";
   if (p === "AGENT.md")                          return "bridge";  // vault root — Devin reads this
   if (p === ".brain/AGENT.md")                   return "bridge";
   if (p === ".agents/AGENT.md")                  return "bridge";
+  if (p === ".devin/config.json")                return "bridge";  // SessionStart hook
 
   // Profiles — append new sections on update, never overwrite existing content
   if (p.startsWith(".brain/profiles/"))          return "append";
