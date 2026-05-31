@@ -1,15 +1,12 @@
 ---
 agent: brain-terminal-router
 version: 1.0
-first_run: false
-last_scanned: "2026-05-31 (seeded)"
-vault_files: 83
-vault_folders: 17
-profiles_updated:
-  - note-manager
-  - brainstormer
-update_log:
-  - "2026-05-31 — Manually seeded with real vault structure. Profiles enriched."
+first_run: true
+last_scanned: ""
+vault_files: 0
+vault_folders: 0
+profiles_updated: []
+update_log: []
 ---
 
 # Brain Terminal — Agent Router
