@@ -75,7 +75,7 @@ export const THEMES: Record<BrainTerminalSettings["theme"], ITheme> = {
   light: THEME_LIGHT,
 };
 
-export const BT_DEBUG = false;
+export const BT_DEBUG = true;
 
 export function btLog(...args: unknown[]): void {
   if (BT_DEBUG) console.log("[BrainTerminal]", ...args);

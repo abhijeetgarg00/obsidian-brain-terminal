@@ -4,6 +4,7 @@ import { BrainTerminalSettingTab } from "./settings";
 import { TerminalView } from "./terminal-view";
 import { diffExtension, setDiffEffect } from "./diff-decoration";
 import { computeDiff } from "./diff-engine";
+import { STARTER_PACK, STARTER_PACK_VERSION } from "./starter-pack";
 
 const MAX_CACHE = 2000;
 const DIFF_FADE_MS = 10_000;
@@ -75,12 +76,12 @@ export default class BrainTerminalPlugin extends Plugin {
     this.openNoteWatcher = setInterval(() => this.checkOpenNote(), 250);
 
     this.app.workspace.onLayoutReady(async () => {
-      await this.maybeInstallNodePty(dir);
-      await this.checkPrerequisites();
-      await this.maybeScaffoldStarterPack();
-      await this.maybeInstallCompanionPlugins();
-      // BMAD install is handled by the AI agent on first terminal session
-      // The agent reads AGENT.md → Step 0 → runs npx bmad-method install
+      console.log("[BrainTerminal] onLayoutReady fired");
+      try { await this.maybeInstallNodePty(dir); } catch(e) { console.error("[BrainTerminal] maybeInstallNodePty error:", e); }
+      try { await this.checkPrerequisites(); } catch(e) { console.error("[BrainTerminal] checkPrerequisites error:", e); }
+      try { await this.maybeScaffoldStarterPack(); } catch(e) { console.error("[BrainTerminal] maybeScaffoldStarterPack error:", e); }
+      try { await this.maybeInstallCompanionPlugins(); } catch(e) { console.error("[BrainTerminal] maybeInstallCompanionPlugins error:", e); }
+      console.log("[BrainTerminal] onLayoutReady complete");
     });
     btLog("loaded");
   }
@@ -668,15 +669,13 @@ export default class BrainTerminalPlugin extends Plugin {
   // ─── Starter pack ────────────────────────────────────────────────────────────
 
   private async maybeScaffoldStarterPack(force = false): Promise<void> {
+    console.log("[BrainTerminal] maybeScaffoldStarterPack start, STARTER_PACK length:", STARTER_PACK.length, "version:", STARTER_PACK_VERSION);
     let data = (await this.loadData()) ?? {};
-    let { STARTER_PACK, STARTER_PACK_VERSION } = { STARTER_PACK: [] as any[], STARTER_PACK_VERSION: "0" };
-    try {
-      ({ STARTER_PACK, STARTER_PACK_VERSION } = await import("./starter-pack"));
-    } catch { btLog("starter pack not bundled — skipping"); return; }
+    console.log("[BrainTerminal] loaded data:", JSON.stringify(data));
 
     // ── Detect existing vault structure ──────────────────────────────────────
     const vaultState = await this.detectVaultState();
-    btLog("vault state:", vaultState);
+    console.log("[BrainTerminal] vault state:", vaultState);
 
     // If vault is empty, always re-run setup regardless of saved version
     // This handles the case where a previous install failed mid-way
