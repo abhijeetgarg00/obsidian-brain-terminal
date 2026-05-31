@@ -29,75 +29,162 @@ Read your own frontmatter above.
 
 ## First Run Sequence
 
-Run this ONCE on first terminal session. Do every step in order.
+Run this ONCE on first terminal session. Work through every step in order.
+This is a deep scan — vault AND all linked code repositories.
+
+---
 
 ### Step 0 — Install BMAD
+
 Check if `.claude/skills/` exists and has folders inside it.
 
-**If it exists and has content** → BMAD already installed, skip to Step 1.
+**Already installed** → skip to Step 1.
 
-**If missing** → run this exact command:
+**Missing** → run:
 ```
 npx bmad-method install --directory "<vault-root>" --modules bmm,bmb,tea --tools claude-code,windsurf --yes
 ```
-Replace `<vault-root>` with the absolute path to this vault.
-You can find the vault root by reading `.brain/vault-structure.md` or checking the path of this file.
+Replace `<vault-root>` with the absolute path to this vault (the folder containing this file).
 
-Modules included:
-- `core` — always included automatically (PM, Architect, Dev, Analyst, UX, QA agents)
-- `bmm` — Build More Method (planning, PRDs, epics, stories, sprints)
-- `bmb` — BMAD Builder (create custom agents and workflows)
-- `tea` — Test Engineering Assistant (test plans, Playwright, coverage, CI)
+Modules:
+- `core` — base agents: PM, Architect, Dev, Analyst, UX, QA, Tech Writer
+- `bmm` — planning, PRDs, epics, stories, sprints
+- `bmb` — build custom agents and workflows
+- `tea` — test plans, Playwright, coverage, CI
 
-Intentionally excluded:
-- `cis` — Creative Image Suite (image generation, not needed)
+If you get `EBUSY` errors → wait 5s → retry up to 3 times.
+If it keeps failing → tell the user the exact command to run manually, then continue.
 
-- If it succeeds → continue to Step 1
-- If you get `EBUSY` errors → wait 5 seconds and retry up to 3 times
-- If it keeps failing → tell the user exactly what failed and the command to run manually, then continue to Step 1 anyway
+---
 
 ### Step 1 — Scan the vault
-Walk every folder and file in the vault. Build a map:
-- Folder names and their apparent purpose (look at file names and content)
-- File naming conventions (snake_case, kebab-case, Title Case, etc.)
-- Frontmatter fields used (created, updated, tags, etc.)
-- How projects are structured (one folder per project? flat?)
-- Where templates live
-- Where notes link to each other
-- Any README or index notes
 
-### Step 2 — Write vault-structure.md
-Write the real structure to `.brain/vault-structure.md`.
-Replace the placeholder content completely.
-Include: folder tree, purpose of each folder, conventions found, example note paths.
+Walk every folder and file in the vault. For each item record:
+- Full path
+- File type (note, template, config, asset)
+- Tags and frontmatter fields if it's a markdown note
+- Any `[[wikilinks]]` or external links inside
 
-### Step 3 — Update note-format.md
-Update `.brain/note-format.md` with the actual frontmatter fields, naming patterns,
-and wikilink conventions found in this vault.
+Build a complete picture of:
+- Every folder and its purpose
+- File naming conventions used (kebab-case, Title Case, snake_case)
+- How projects are structured (one folder per project, what's inside each)
+- Where templates live and what types exist
+- Any README, index, or home notes
+- Which notes link to which
 
-### Step 4 — Enrich both profiles
-For each profile in `.brain/profiles/`, update with real vault data:
+---
 
-**note-manager.md** — add: actual folder names, template paths, frontmatter fields used
-**brainstormer.md** — add: where ideas/brainstorms live, how mind maps are structured
+### Step 2 — Find all code repositories
 
-### Step 5 — Update yourself
+Search for git repos linked to this vault. Look for:
+- Any `.git` folders **inside** the vault
+- Any paths mentioned in project notes (look for `D:\`, `C:\`, `/Users/`, `/home/`, repo URLs)
+- Check `.brain/vault-structure.md` → `## Known Git Repos` table
+- Check project notes in `project/*/` for repo paths
+
+For each repo found:
+1. Record: project name, repo path, primary language, framework
+2. Run `git log --oneline -10` → capture recent commit history
+3. Run `git status` → note any uncommitted changes
+4. Read `package.json` / `README.md` / `pyproject.toml` / `Cargo.toml` → understand the stack
+5. List top-level folders → understand project structure
+6. Read the main entry file (e.g. `src/main.ts`, `src/index.ts`, `main.py`) → understand what it does
+
+---
+
+### Step 3 — Deep scan each repo
+
+For each repo found in Step 2, do a thorough read:
+
+**Structure scan:**
+- List all source files by folder
+- Identify: entry points, config files, test files, build scripts
+- Note: what the project does, what tech stack it uses, what problems it solves
+
+**Code understanding:**
+- Read key files: main entry, core modules, config
+- Understand the architecture: how files relate to each other
+- Note: any TODOs, known issues, incomplete features
+
+**Dependency scan:**
+- Read `package.json` / `requirements.txt` / `Cargo.toml`
+- Note key dependencies and versions
+
+**Git history:**
+- Last 10 commits — what has been worked on recently
+- Any open branches
+- Uncommitted changes
+
+Write a `## Repo: <name>` section to `.brain/vault-structure.md` for each repo containing:
+- Absolute path
+- Stack and framework
+- What it does (2-3 sentences)
+- Key files to know
+- Recent activity summary
+- Current status (active / stalled / complete)
+
+---
+
+### Step 4 — Update vault-structure.md
+
+Rewrite `.brain/vault-structure.md` completely with real data:
+- Full vault folder tree with purposes
+- Complete repo map with all details from Step 3
+- Naming conventions found
+- Note linking patterns
+
+---
+
+### Step 5 — Update note-format.md
+
+Update `.brain/note-format.md` with actual frontmatter fields, naming patterns,
+and wikilink conventions found across the vault.
+
+---
+
+### Step 6 — Enrich both profiles with everything you learned
+
+**note-manager.md** — update with:
+- Actual folder names and purposes
+- All template paths and when to use each
+- Real frontmatter fields in use
+- Actual repo paths for the git section
+- Commit message patterns observed in git history
+
+**brainstormer.md** — update with:
+- Where ideas and brainstorms actually live
+- Connected project notes to reference during ideation
+- Any mind maps or diagrams already in the vault
+
+---
+
+### Step 7 — Update yourself
+
 Edit this file (AGENT.md). Update the frontmatter:
 - Set `first_run: false`
 - Set `last_scanned: <today's date>`
 - Set `vault_files: <count>`
 - Set `vault_folders: <count>`
 - Set `profiles_updated: [note-manager, brainstormer]`
-- Append to `update_log`: `"<date> — First run. Scanned X files, Y folders. Updated 2 profiles."`
+- Append to `update_log`: `"<date> — First run complete. Scanned X vault files, Y repos. Updated 2 profiles."`
 
-### Step 6 — Report to user
-Write a short summary in the terminal:
+---
+
+### Step 8 — Report to user
+
+Print a full summary:
 ```
-✓ Brain Terminal first-run complete
-✓ BMAD: [installed fresh / already present / failed — see above]
-✓ Vault scanned: X files, Y folders
-✓ 2 profiles enriched with your vault structure
-✓ Ready — ask me anything
+✓ Brain Terminal — First Run Complete
+─────────────────────────────────────
+BMAD:      [installed fresh / already present / failed]
+Vault:     X files across Y folders
+Repos:     N repos found and scanned
+  - <repo name>: <stack> — <1 line description>
+  - <repo name>: <stack> — <1 line description>
+Profiles:  note-manager + brainstormer enriched
+─────────────────────────────────────
+Ready. Ask me anything about your vault or code.
 ```
 
 ---
