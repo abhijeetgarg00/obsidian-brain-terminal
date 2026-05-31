@@ -547,14 +547,14 @@ export default class BrainTerminalPlugin extends Plugin {
 
   // ─── Starter pack ────────────────────────────────────────────────────────────
 
-  private async maybeScaffoldStarterPack(): Promise<void> {
+  private async maybeScaffoldStarterPack(force = false): Promise<void> {
     let data = (await this.loadData()) ?? {};
     let { STARTER_PACK, STARTER_PACK_VERSION } = { STARTER_PACK: [] as any[], STARTER_PACK_VERSION: "0" };
     try {
       ({ STARTER_PACK, STARTER_PACK_VERSION } = await import("./starter-pack"));
     } catch { btLog("starter pack not bundled — skipping"); return; }
 
-    const installedVersion = data.starterPackVersion ?? "0";
+    const installedVersion = force ? "0" : (data.starterPackVersion ?? "0");
 
     // ── Detect existing vault structure ──────────────────────────────────────
     const vaultState = await this.detectVaultState();
@@ -802,9 +802,9 @@ This vault is powered by **Brain Terminal** — an AI terminal inside Obsidian.
     },
   ];
 
-  private async maybeInstallCompanionPlugins(): Promise<void> {
+  private async maybeInstallCompanionPlugins(force = false): Promise<void> {
     const data = (await this.loadData()) ?? {};
-    if (data.companionPluginsInstalled) return;
+    if (!force && data.companionPluginsInstalled) return;
 
     const plugins = (this.app as any).plugins;
     if (!plugins) return;

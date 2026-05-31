@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, PluginSettingTab, Setting, Notice } from "obsidian";
 import type BrainTerminalPlugin from "./main";
 import { DEFAULT_SETTINGS } from "./constants";
 
@@ -11,9 +11,12 @@ export class BrainTerminalSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
+    // ── Terminal ────────────────────────────────────────────────────────────
+    containerEl.createEl("h2", { text: "Terminal" });
+
     new Setting(containerEl)
       .setName("Shell path")
-      .setDesc("Leave blank to auto-detect (PowerShell 7 on Windows, $SHELL on Unix).")
+      .setDesc("Leave blank to auto-detect (PowerShell 7 on Windows, $SHELL on Mac/Linux).")
       .addText(text =>
         text
           .setPlaceholder("e.g. C:\\Program Files\\PowerShell\\7\\pwsh.exe")
@@ -26,10 +29,10 @@ export class BrainTerminalSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Startup command")
-      .setDesc("Command written to the shell on first open (e.g. devin, claude, windsurf).")
+      .setDesc("Command to run automatically when a terminal opens (e.g. claude, devin, windsurf). Leave blank for a plain shell.")
       .addText(text =>
         text
-          .setPlaceholder(DEFAULT_SETTINGS.startupCommand)
+          .setPlaceholder("e.g. claude")
           .setValue(this.plugin.settings.startupCommand)
           .onChange(async v => {
             this.plugin.settings.startupCommand = v.trim();
@@ -97,5 +100,58 @@ export class BrainTerminalSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           })
       );
+
+    // ── Vault Setup ─────────────────────────────────────────────────────────
+    containerEl.createEl("h2", { text: "Vault Setup" });
+
+    new Setting(containerEl)
+      .setName("Re-run vault setup")
+      .setDesc("Re-copies CLAUDE.md, AGENT.md, profiles, and any missing templates to your vault. Safe — never overwrites existing files.")
+      .addButton(btn =>
+        btn
+          .setButtonText("Re-run setup")
+          .onClick(async () => {
+            await (this.plugin as any).maybeScaffoldStarterPack(true);
+            new Notice("Brain Terminal: vault setup complete.");
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Install BMAD agent suite")
+      .setDesc("Runs npx bmad-method install — installs 69 AI agents into your vault. Requires Node.js.")
+      .addButton(btn =>
+        btn
+          .setButtonText("Install BMAD")
+          .onClick(async () => {
+            new Notice("Installing BMAD… this takes ~30s.");
+            try {
+              await (this.plugin as any).runBmadInstall();
+              new Notice("BMAD installed — 69 agents ready!");
+            } catch {
+              new Notice("BMAD install failed. Make sure Node.js is installed and try again.");
+            }
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Install companion plugins")
+      .setDesc("Auto-installs Templater, Update time on edit, and Natural Language Dates if missing.")
+      .addButton(btn =>
+        btn
+          .setButtonText("Install companions")
+          .onClick(async () => {
+            await (this.plugin as any).maybeInstallCompanionPlugins(true);
+          })
+      );
+
+    // ── About ───────────────────────────────────────────────────────────────
+    containerEl.createEl("h2", { text: "About" });
+
+    const about = containerEl.createEl("div");
+    about.style.cssText = "color:var(--text-muted);font-size:0.9em;line-height:1.6";
+    about.createEl("p", { text: "Brain Terminal — AI terminal inside Obsidian with live diff highlighting." });
+    about.createEl("p").innerHTML =
+      'Built by <a href="https://github.com/abhijeetgarg00" target="_blank">Abhijeet Garg</a> · ' +
+      '<a href="https://github.com/abhijeetgarg00/obsidian-brain-terminal" target="_blank">GitHub</a>';
   }
 }
