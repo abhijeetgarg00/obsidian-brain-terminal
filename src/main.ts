@@ -696,12 +696,16 @@ export default class BrainTerminalPlugin extends Plugin {
         await this.scaffoldVaultStructure();   // creates missing folders
         await this.ensureStarterPackDirs(STARTER_PACK);
         await this.copyBridgeFiles(STARTER_PACK); // bridge files
-        // Copy only templates that don't exist yet
+        // Copy only templates that don't exist yet (native fs)
+        const fs   = require("fs");
+        const path = require("path");
         for (const { path: p, content } of STARTER_PACK) {
           if (!normalizePath(p).includes("_templates")) continue;
-          const norm = normalizePath(p);
-          if (!await this.app.vault.adapter.exists(norm))
-            await this.app.vault.adapter.write(norm, content);
+          const abs = path.join(this.vaultRoot, normalizePath(p));
+          if (!fs.existsSync(abs)) {
+            fs.writeFileSync(abs, content, "utf8");
+            btLog("wrote template:", p);
+          }
         }
 
       } else {
@@ -710,13 +714,7 @@ export default class BrainTerminalPlugin extends Plugin {
         await this.scaffoldVaultStructure();   // user folders + Home.md
         // Ensure all parent dirs for starter pack files exist
         await this.ensureStarterPackDirs(STARTER_PACK);
-        for (const { path: p, content } of STARTER_PACK) {
-          const norm = normalizePath(p);
-          if (!await this.app.vault.adapter.exists(norm)) {
-            await this.app.vault.adapter.write(norm, content);
-            btLog("wrote:", norm);
-          }
-        }
+        await this.writeStarterFiles(STARTER_PACK);
         new (require("obsidian").Notice)("Brain Terminal: vault set up! Open the terminal to get started.", 6000);
       }
 
@@ -774,19 +772,21 @@ export default class BrainTerminalPlugin extends Plugin {
       "AI Profiles",
     ];
 
-    // Create folders using adapter.mkdir — works even if parent doesn't exist
+    // Create folders using native fs — handles all folder names including spaces
+    const fs   = require("fs");
+    const path = require("path");
     for (const folder of folders) {
-      const norm = normalizePath(folder);
-      if (!await this.app.vault.adapter.exists(norm)) {
-        await this.app.vault.adapter.mkdir(norm);
+      const abs = path.join(this.vaultRoot, folder);
+      if (!fs.existsSync(abs)) {
+        fs.mkdirSync(abs, { recursive: true });
         btLog("created folder:", folder);
       }
     }
 
-    // Create a Home note as the vault entry point
-    const homePath = normalizePath("Home.md");
-    if (!await this.app.vault.adapter.exists(homePath)) {
-      await this.app.vault.create(homePath,
+    // Create a Home note as the vault entry point (native fs — reliable)
+    const homeAbs = path.join(this.vaultRoot, "Home.md");
+    if (!fs.existsSync(homeAbs)) {
+      fs.writeFileSync(homeAbs,
 `---
 tags:
   - "#home"
@@ -832,6 +832,8 @@ This vault is powered by **Brain Terminal** — an AI terminal inside Obsidian.
 
   /** Ensure every parent directory for starter pack files exists */
   private async ensureStarterPackDirs(pack: any[]): Promise<void> {
+    const fs   = require("fs");
+    const path = require("path");
     const dirs = new Set<string>();
     for (const { path: p } of pack) {
       const parts = normalizePath(p).split("/");
@@ -840,18 +842,35 @@ This vault is powered by **Brain Terminal** — an AI terminal inside Obsidian.
       }
     }
     for (const dir of dirs) {
-      if (!await this.app.vault.adapter.exists(dir)) {
-        await this.app.vault.adapter.mkdir(dir);
-        btLog("mkdir:", dir);
+      // Use native fs.mkdirSync — vault.adapter.mkdir silently skips dot-folders on Windows
+      const abs = path.join(this.vaultRoot, dir);
+      if (!fs.existsSync(abs)) {
+        fs.mkdirSync(abs, { recursive: true });
+        btLog("mkdir (native):", abs);
       }
     }
   }
 
-  /** Copy only bridge files (CLAUDE.md, .brain/, .agents/AGENT.md) — skip templates */
+  /** Write all starter pack files using native fs (handles hidden dot-folders on Windows) */
+  private writeStarterFiles(pack: any[]): void {
+    const fs   = require("fs");
+    const path = require("path");
+    for (const { path: p, content } of pack) {
+      const abs = path.join(this.vaultRoot, normalizePath(p).replace(/\//g, path.sep));
+      if (!fs.existsSync(abs)) {
+        fs.writeFileSync(abs, content, "utf8");
+        btLog("wrote:", p);
+      }
+    }
+  }
+
+  /** Copy only bridge files (CLAUDE.md, AGENT.md, .brain/, .agents/) — skip templates */
   private async copyBridgeFiles(pack: any[]): Promise<void> {
+    const fs   = require("fs");
+    const path = require("path");
     const bridgePaths = [
       "CLAUDE.md",
-      "AGENT.md",             // vault root — Devin reads this
+      "AGENT.md",
       ".brain/AGENT.md",
       ".brain/vault-structure.md",
       ".brain/note-format.md",
@@ -862,10 +881,11 @@ This vault is powered by **Brain Terminal** — an AI terminal inside Obsidian.
     await this.ensureStarterPackDirs(pack);
     for (const { path: p, content } of pack) {
       const norm = normalizePath(p);
-      if (bridgePaths.some(b => norm.endsWith(normalizePath(b)))) {
-        if (!await this.app.vault.adapter.exists(norm)) {
-          await this.app.vault.adapter.write(norm, content);
-          btLog("wrote bridge:", norm);
+      if (bridgePaths.some(b => normalizePath(b) === norm)) {
+        const abs = path.join(this.vaultRoot, norm.replace(/\//g, path.sep));
+        if (!fs.existsSync(abs)) {
+          fs.writeFileSync(abs, content, "utf8");
+          btLog("wrote bridge:", p);
         }
       }
     }
