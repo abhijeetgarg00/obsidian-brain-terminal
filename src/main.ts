@@ -1025,13 +1025,21 @@ This vault is powered by **Brain Terminal** — an AI terminal inside Obsidian.
           await adapter.write(normalizePath(`${pluginDir}/styles.css`), styles);
         } catch { /* styles optional */ }
 
-        // Refresh Obsidian's manifest cache so it knows the plugin exists
+        // Refresh manifest cache so Obsidian knows the plugin files exist
         if (typeof plugins.loadManifests === "function") await plugins.loadManifests();
 
+        // loadPlugin — loads the JS into memory (requires manifest to be in cache)
         await plugins.loadPlugin(plugin.id);
-        await plugins.enablePlugin(plugin.id);
 
-        btLog("installed companion plugin:", plugin.id);
+        // enablePluginAndSave — marks enabled + writes community-plugins.json
+        // (enablePlugin alone does NOT save or add to enabledPlugins set)
+        if (typeof plugins.enablePluginAndSave === "function") {
+          await plugins.enablePluginAndSave(plugin.id);
+        } else {
+          await plugins.enablePlugin(plugin.id);
+        }
+
+        btLog("installed and enabled companion plugin:", plugin.id);
       } catch (e) {
         btLog("failed to install", plugin.id, e);
       }
